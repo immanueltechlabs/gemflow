@@ -21,10 +21,10 @@ export async function GET(request: NextRequest) {
       redirect(next);
     } else {
       // redirect the user to an error page with some instructions
-      redirect(`/auth/error?error=${error?.message}`);
+      redirect("/auth/error?error=Konfirmasi%20akun%20gagal");
     }
   }
 
   // redirect the user to an error page with some instructions
-  redirect(`/auth/error?error=No token hash or type`);
+  redirect("/auth/error?error=Tautan%20konfirmasi%20tidak%20valid");
 }
