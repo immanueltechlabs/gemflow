@@ -9,7 +9,6 @@ import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Label barcode | GemFlow" };
 export const instant = false;
-export const dynamic = "force-dynamic";
 
 export default async function BarcodeLabelPage({ params }: { params: Promise<{ id: string }> }) {
   const [{ id }] = await Promise.all([params, getCurrentProfile()]);

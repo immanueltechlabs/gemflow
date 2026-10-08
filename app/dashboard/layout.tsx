@@ -8,7 +8,6 @@ export const metadata: Metadata = {
 };
 
 export const instant = false;
-export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();

@@ -9,7 +9,6 @@ import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Inventaris | GemFlow" };
 export const instant = false;
-export const dynamic = "force-dynamic";
 
 async function loadProducts() {
   const supabase = await createClient();
