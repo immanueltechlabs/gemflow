@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Barcode,
@@ -14,7 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { checkoutSale } from "@/app/pos/actions";
+import { checkoutSale, findAvailableProduct, searchAvailableProducts } from "@/app/pos/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatRupiah } from "@/lib/inventory";
@@ -27,15 +27,23 @@ import {
   type SaleReceipt,
 } from "@/lib/pos";
 
-function searchable(value: string | null) {
-  return value?.trim().toLocaleLowerCase() ?? "";
+function looksLikeSkuOrBarcode(value: string) {
+  const normalized = value.trim();
+  return /^[a-z0-9_-]+$/i.test(normalized) && /[0-9_-]/.test(normalized);
 }
 
-export function PosTerminal({ products }: { products: PosProduct[] }) {
+export function PosTerminal() {
   const router = useRouter();
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const searchSequenceRef = useRef(0);
+  const cartProductIdsRef = useRef(new Set<string>());
   const [actionState, formAction, pending] = useActionState(checkoutSale, initialPosActionState);
   const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<PosProduct[]>([]);
+  const [searchPending, setSearchPending] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchMessage, setSearchMessage] = useState("");
+  const [exactLookupFailed, setExactLookupFailed] = useState(false);
   const [cart, setCart] = useState<PosProduct[]>([]);
   const [discountInput, setDiscountInput] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
@@ -44,15 +52,6 @@ export function PosTerminal({ products }: { products: PosProduct[] }) {
   const [notes, setNotes] = useState("");
   const [feedback, setFeedback] = useState("");
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
-
-  const filteredProducts = useMemo(() => {
-    const query = searchable(search);
-    if (!query) return products;
-    return products.filter((product) =>
-      [product.barcode, product.sku, product.name, product.category]
-        .some((value) => searchable(value).includes(query)),
-    );
-  }, [products, search]);
 
   const subtotal = cart.reduce((sum, product) => sum + Number(product.selling_price ?? 0), 0);
   const discountAmount = Number(discountInput) || 0;
@@ -63,25 +62,75 @@ export function PosTerminal({ products }: { products: PosProduct[] }) {
   const cashInsufficient = paymentMethod === "cash" && amountPaid < total;
 
   useEffect(() => {
+    const query = search.trim();
+    if (looksLikeSkuOrBarcode(query)) {
+      setSearchResults([]);
+      setSearchPending(false);
+      setSearchError("");
+      setSearchMessage("");
+      return;
+    }
+
+    if (query.length < 3) {
+      setSearchResults([]);
+      setSearchPending(false);
+      setSearchError("");
+      setSearchMessage("");
+      return;
+    }
+
+    const requestSequence = ++searchSequenceRef.current;
+    const timeoutId = window.setTimeout(() => {
+      setSearchPending(true);
+      void searchAvailableProducts(query)
+        .then((result) => {
+          if (searchSequenceRef.current !== requestSequence) return;
+          setSearchResults(result.products);
+          setSearchError(result.error ?? "");
+          setSearchMessage(result.error || result.products.length ? "" : "Produk tidak ditemukan atau tidak tersedia.");
+          setSearchPending(false);
+        })
+        .catch(() => {
+          if (searchSequenceRef.current !== requestSequence) return;
+          setSearchResults([]);
+          setSearchError("Pencarian produk gagal. Coba lagi atau hubungi Admin.");
+          setSearchMessage("");
+          setSearchPending(false);
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (searchSequenceRef.current === requestSequence) searchSequenceRef.current += 1;
+    };
+  }, [search]);
+
+  useEffect(() => {
     if (actionState.status !== "success" || !actionState.receipt) return;
 
     setReceipt(actionState.receipt);
+    cartProductIdsRef.current.clear();
     setCart([]);
     setDiscountInput("0");
     setAmountPaidInput("");
     setCustomerName("");
     setNotes("");
     setSearch("");
+    setSearchResults([]);
+    setSearchError("");
+    setSearchMessage("");
+    setExactLookupFailed(false);
     setFeedback("");
     router.refresh();
     barcodeInputRef.current?.focus();
   }, [actionState, router]);
 
   const addProduct = (product: PosProduct) => {
-    if (cart.some((item) => item.id === product.id)) {
+    if (cartProductIdsRef.current.has(product.id)) {
       setFeedback(`${product.sku} sudah ada di keranjang.`);
       return;
     }
+    cartProductIdsRef.current.add(product.id);
     setCart((items) => [...items, product]);
     setFeedback(`${product.sku} ditambahkan ke keranjang.`);
   };
@@ -89,18 +138,36 @@ export function PosTerminal({ products }: { products: PosProduct[] }) {
   const handleBarcodeKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") return;
     event.preventDefault();
-    const scannedValue = searchable(search);
+    const scannedValue = event.currentTarget.value.trim().slice(0, 100);
     if (!scannedValue) return;
 
-    const match = products.find((product) =>
-      searchable(product.barcode) === scannedValue || searchable(product.sku) === scannedValue,
-    );
-    if (match) {
-      addProduct(match);
-      setSearch("");
-    } else {
-      setFeedback("Barcode atau SKU tidak ditemukan pada produk tersedia.");
-    }
+    const requestSequence = ++searchSequenceRef.current;
+    setSearchPending(true);
+    setSearchResults([]);
+    setSearchError("");
+    setSearchMessage("");
+    setFeedback("");
+    void findAvailableProduct(scannedValue)
+      .then((result) => {
+        if (searchSequenceRef.current !== requestSequence) return;
+        setSearchPending(false);
+        if (result.error) {
+          setSearchError(result.error);
+          return;
+        }
+        if (!result.product) {
+          setExactLookupFailed(true);
+          return;
+        }
+        addProduct(result.product);
+        setExactLookupFailed(false);
+        setSearch("");
+      })
+      .catch(() => {
+        if (searchSequenceRef.current !== requestSequence) return;
+        setSearchPending(false);
+        setSearchError("Produk tidak dapat dicari. Coba lagi atau hubungi Admin.");
+      });
   };
 
   return (
@@ -109,7 +176,7 @@ export function PosTerminal({ products }: { products: PosProduct[] }) {
         <div className="flex flex-col gap-4 border-b p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
           <div>
             <h2 id="products-heading" className="font-semibold">Pilih produk</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{products.length} produk tersedia</p>
+            <p className="mt-1 text-sm text-muted-foreground">Cari produk tersedia tanpa memuat seluruh katalog.</p>
           </div>
           <div className="relative w-full sm:max-w-sm">
             <Barcode aria-hidden="true" className="absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-primary" />
@@ -117,7 +184,16 @@ export function PosTerminal({ products }: { products: PosProduct[] }) {
               ref={barcodeInputRef}
               autoFocus
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                searchSequenceRef.current += 1;
+                setSearch(event.target.value);
+                setSearchResults([]);
+                setSearchError("");
+                setSearchMessage("");
+                setExactLookupFailed(false);
+                setFeedback("");
+                setSearchPending(false);
+              }}
               onKeyDown={handleBarcodeKeyDown}
               placeholder="Pindai barcode, SKU, atau cari nama"
               aria-label="Pindai barcode atau cari produk"
@@ -128,15 +204,27 @@ export function PosTerminal({ products }: { products: PosProduct[] }) {
 
         <div className="flex min-h-12 items-center justify-between gap-3 border-b bg-muted/25 px-4 py-2.5 text-sm sm:px-5">
           <span role="status" aria-live="polite" className="min-w-0 truncate text-muted-foreground">
-            {feedback || (search ? `${filteredProducts.length} hasil pencarian` : "Cari barcode, SKU, atau nama produk")}
+            {feedback || (searchPending
+              ? "Mencari produk..."
+              : searchError || (exactLookupFailed
+                ? "Produk tidak ditemukan atau tidak tersedia."
+                : looksLikeSkuOrBarcode(search)
+                  ? "Tekan Enter untuk memindai SKU/barcode."
+                  : searchMessage || (searchResults.length
+                    ? `${searchResults.length} hasil pencarian`
+                    : "Pindai barcode/SKU atau ketik minimal 3 karakter nama produk")))}
           </span>
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{filteredProducts.length} produk</span>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{searchResults.length} hasil</span>
         </div>
 
         <div className="max-h-[62svh] min-h-72 overflow-y-auto xl:max-h-[calc(100svh-21rem)]">
-          {filteredProducts.length ? (
+          {searchPending ? (
+            <div role="status" className="flex min-h-72 items-center justify-center gap-3 text-sm text-muted-foreground">
+              <LoaderCircle aria-hidden="true" className="size-5 animate-spin text-primary" />Mencari produk
+            </div>
+          ) : searchResults.length ? (
             <ul className="divide-y px-4 sm:px-5">
-              {filteredProducts.map((product) => {
+              {searchResults.map((product) => {
                 const alreadyAdded = cart.some((item) => item.id === product.id);
                 return (
                   <li key={product.id} className="flex min-h-[84px] items-center gap-3 py-3">
@@ -167,10 +255,22 @@ export function PosTerminal({ products }: { products: PosProduct[] }) {
             </ul>
           ) : (
             <div className="flex min-h-72 flex-col items-center justify-center px-6 text-center">
-              <Search aria-hidden="true" className="size-6 text-muted-foreground" />
-              <p className="mt-3 font-medium">{products.length ? "Produk tidak ditemukan" : "Belum ada produk tersedia"}</p>
+              {searchError ? <CircleAlert aria-hidden="true" className="size-6 text-destructive" /> : <Search aria-hidden="true" className="size-6 text-muted-foreground" />}
+              <p className="mt-3 font-medium">
+                {searchError
+                  ? "Pencarian produk belum berhasil"
+                  : exactLookupFailed || searchMessage
+                    ? "Produk tidak ditemukan"
+                    : looksLikeSkuOrBarcode(search)
+                      ? "SKU/barcode siap dipindai"
+                      : "Pindai atau cari produk"}
+              </p>
               <p className="mt-1 max-w-sm text-sm leading-5 text-muted-foreground">
-                {products.length ? "Coba kata kunci, barcode, atau SKU lain." : "Produk dengan status tersedia akan muncul di sini."}
+                {searchError || (exactLookupFailed
+                  ? "Produk tidak ditemukan atau tidak tersedia."
+                  : searchMessage || (looksLikeSkuOrBarcode(search)
+                    ? "Tekan Enter untuk memindai SKU/barcode."
+                    : "Tekan Enter setelah memindai barcode/SKU, atau ketik nama produk untuk mencari."))}
               </p>
             </div>
           )}
@@ -205,7 +305,10 @@ export function PosTerminal({ products }: { products: PosProduct[] }) {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      onClick={() => setCart((items) => items.filter((item) => item.id !== product.id))}
+                      onClick={() => {
+                        cartProductIdsRef.current.delete(product.id);
+                        setCart((items) => items.filter((item) => item.id !== product.id));
+                      }}
                       aria-label={`Hapus ${product.name} dari keranjang`}
                       title="Hapus produk"
                       className="size-11 shrink-0 text-muted-foreground hover:text-destructive"

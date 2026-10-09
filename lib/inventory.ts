@@ -25,6 +25,26 @@ export type Product = {
   received_at: string | null;
 };
 
+export type InventoryListingProduct = Omit<Product, "cost_price"> & {
+  cost_price?: number | null;
+};
+
+export type InventoryFilters = {
+  q: string;
+  category: string;
+  supplier: string;
+  status: string;
+};
+
+export type InventoryPagination = {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  previousHref: string | null;
+  nextHref: string | null;
+};
+
 export type InventoryActionState = {
   status: "idle" | "success" | "error";
   message: string;

@@ -27,7 +27,7 @@ const navItems: NavItem[] = [
   { label: "Dasbor", href: "/dashboard", icon: LayoutDashboard },
   { label: "Inventaris", href: "/inventory", icon: Boxes },
   { label: "Kasir", href: "/pos", icon: ShoppingBag },
-  { label: "Pergerakan Stok", href: "/dashboard/stock-movements", icon: ArrowLeftRight, adminOnly: true },
+  { label: "Pergerakan Stok", href: "/stock-movements", icon: ArrowLeftRight },
   { label: "Retur", href: "/returns", icon: RotateCcw },
   { label: "Pengeluaran", href: "/expenses", icon: ReceiptText },
   { label: "Laporan", href: "/reports", icon: ChartNoAxesCombined, adminOnly: true },

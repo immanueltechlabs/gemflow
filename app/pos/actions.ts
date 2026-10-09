@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getCurrentProfile } from "@/lib/auth";
-import { paymentMethods, type PosActionState, type SaleReceipt } from "@/lib/pos";
+import { paymentMethods, type PosActionState, type PosProduct, type SaleReceipt } from "@/lib/pos";
 import { createClient } from "@/lib/supabase/server";
 
 type SupabaseError = {
@@ -73,6 +73,79 @@ function readReceiptValues(data: unknown) {
     total: numberValue(["total", "total_amount", "grand_total", "final_total", "amount_total"]),
     change: numberValue(["change", "change_amount", "change_due", "cash_change"]),
   };
+}
+
+const posProductSelect = "id, sku, barcode, name, category, selling_price";
+
+export async function findAvailableProduct(identifier: string): Promise<{
+  product: PosProduct | null;
+  error?: string;
+}> {
+  const profile = await getCurrentProfile();
+  if (profile.role !== "admin" && profile.role !== "cashier") {
+    return { product: null, error: "Akun ini tidak memiliki akses ke kasir." };
+  }
+
+  const value = identifier.trim().slice(0, 100);
+  if (!value) return { product: null };
+
+  const supabase = await createClient();
+  const barcodeResult = await supabase
+    .from("products")
+    .select(posProductSelect)
+    .eq("barcode", value)
+    .eq("status", "available")
+    .maybeSingle();
+
+  if (barcodeResult.error) {
+    logSupabaseError("products.exact_barcode_lookup", barcodeResult.error);
+    return { product: null, error: "Produk tidak dapat dicari. Coba lagi atau hubungi Admin." };
+  }
+  if (barcodeResult.data) return { product: barcodeResult.data as PosProduct };
+
+  const skuResult = await supabase
+    .from("products")
+    .select(posProductSelect)
+    .eq("sku", value)
+    .eq("status", "available")
+    .maybeSingle();
+
+  if (skuResult.error) {
+    logSupabaseError("products.exact_sku_lookup", skuResult.error);
+    return { product: null, error: "Produk tidak dapat dicari. Coba lagi atau hubungi Admin." };
+  }
+
+  return { product: (skuResult.data as PosProduct | null) ?? null };
+}
+
+export async function searchAvailableProducts(query: string): Promise<{
+  products: PosProduct[];
+  error?: string;
+}> {
+  const profile = await getCurrentProfile();
+  if (profile.role !== "admin" && profile.role !== "cashier") {
+    return { products: [], error: "Akun ini tidak memiliki akses ke kasir." };
+  }
+
+  const value = query.trim().slice(0, 100);
+  if (value.length < 3) return { products: [] };
+
+  const pattern = `%${value.replace(/[\\%_]/g, "\\$&")}%`;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("products")
+    .select(posProductSelect)
+    .eq("status", "available")
+    .ilike("name", pattern)
+    .order("name", { ascending: true })
+    .limit(20);
+
+  if (error) {
+    logSupabaseError("products.name_search", error);
+    return { products: [], error: "Pencarian produk gagal. Coba lagi atau hubungi Admin." };
+  }
+
+  return { products: (data ?? []) as PosProduct[] };
 }
 
 export async function checkoutSale(

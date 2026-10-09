@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
-  Barcode as BarcodeIcon,
   CheckCircle2,
   Edit3,
   FilterX,
@@ -24,50 +23,32 @@ import {
   formatRupiah,
   productStatuses,
   productStatusLabels,
+  type InventoryFilters,
+  type InventoryListingProduct,
+  type InventoryPagination,
   type Product,
 } from "@/lib/inventory";
 
 const selectClass = "h-11 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25";
 
-export function InventoryTable({ products, role }: { products: Product[]; role: UserRole }) {
-  const [query, setQuery] = useState("");
-  const [barcodeQuery, setBarcodeQuery] = useState("");
-  const [status, setStatus] = useState("all");
-  const [category, setCategory] = useState("all");
-  const [supplier, setSupplier] = useState("all");
+export function InventoryTable({
+  products,
+  role,
+  filters,
+  pagination,
+}: {
+  products: InventoryListingProduct[];
+  role: UserRole;
+  filters: InventoryFilters;
+  pagination: InventoryPagination;
+}) {
   const [editing, setEditing] = useState<Product | "new" | null>(null);
   const [feedback, setFeedback] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const categories = useMemo(
-    () => [...new Set(products.map((product) => product.category).filter((value): value is string => Boolean(value)))].sort(),
-    [products],
-  );
-  const suppliers = useMemo(
-    () => [...new Set(products.map((product) => product.supplier_name).filter((value): value is string => Boolean(value)))].sort(),
-    [products],
-  );
-
-  const filteredProducts = useMemo(() => {
-    const search = query.trim().toLocaleLowerCase();
-    const barcodeSearch = barcodeQuery.trim().toLocaleLowerCase();
-    return products.filter((product) => {
-      const searchable = [product.sku, product.barcode, product.name, product.category, product.grade, product.supplier_name]
-        .filter(Boolean)
-        .join(" ")
-        .toLocaleLowerCase();
-      return (
-        (!search || searchable.includes(search)) &&
-        (!barcodeSearch || product.barcode?.toLocaleLowerCase().includes(barcodeSearch) || product.sku.toLocaleLowerCase().includes(barcodeSearch)) &&
-        (status === "all" || product.status === status) &&
-        (category === "all" || product.category === category) &&
-        (supplier === "all" || product.supplier_name === supplier)
-      );
-    });
-  }, [barcodeQuery, category, products, query, status, supplier]);
-
-  const openEditor = (product: Product | "new") => {
-    setEditing(product);
+  const openEditor = (product: InventoryListingProduct | "new") => {
+    if (product !== "new" && product.cost_price === undefined) return;
+    setEditing(product === "new" ? "new" : { ...product, cost_price: product.cost_price ?? null });
     requestAnimationFrame(() => dialogRef.current?.showModal());
   };
   const closeEditor = useCallback(() => {
@@ -79,15 +60,9 @@ export function InventoryTable({ products, role }: { products: Product[]; role: 
     dialogRef.current?.close();
     setEditing(null);
   }, []);
-  const clearFilters = () => {
-    setQuery("");
-    setBarcodeQuery("");
-    setStatus("all");
-    setCategory("all");
-    setSupplier("all");
-  };
-
-  const filtersActive = Boolean(query || barcodeQuery || status !== "all" || category !== "all" || supplier !== "all");
+  const filtersActive = Boolean(filters.q || filters.status || filters.category || filters.supplier);
+  const firstRow = pagination.totalCount ? (pagination.page - 1) * pagination.pageSize + 1 : 0;
+  const lastRow = Math.min(pagination.page * pagination.pageSize, pagination.totalCount);
 
   return (
     <>
@@ -100,34 +75,25 @@ export function InventoryTable({ products, role }: { products: Product[]; role: 
 
       <div className="rounded-xl border bg-card">
         <div className="border-b p-4 sm:p-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-            <div className="relative min-w-0 flex-1">
+          <form method="get" action="/inventory" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_repeat(3,minmax(150px,1fr))_auto]">
+            <div className="relative min-w-0">
               <Search aria-hidden="true" className="absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari SKU, nama, kategori, mutu…" aria-label="Cari inventaris" className="h-11 rounded-lg pl-11 shadow-none focus-visible:ring-2 focus-visible:ring-primary/25" />
+              <Input name="q" defaultValue={filters.q} placeholder="Cari SKU, barcode, atau nama" aria-label="Cari SKU, barcode, atau nama produk" className="h-11 rounded-lg pl-11 shadow-none focus-visible:ring-2 focus-visible:ring-primary/25" />
             </div>
-            <div className="relative min-w-0 flex-1 xl:max-w-sm">
-              <BarcodeIcon aria-hidden="true" className="absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-primary" />
-              <Input value={barcodeQuery} onChange={(event) => setBarcodeQuery(event.target.value)} placeholder="Pindai atau masukkan barcode" aria-label="Pencarian cepat barcode" className="h-11 rounded-lg border-primary/25 pl-11 shadow-none focus-visible:ring-2 focus-visible:ring-primary/25" />
-            </div>
-            {role === "admin" ? <Button type="button" onClick={() => openEditor("new")} className="h-11 shrink-0 rounded-lg px-4 shadow-none"><Plus aria-hidden="true" />Tambah batu mulia</Button> : null}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter berdasarkan status" className={selectClass}>
-              <option value="all">Semua status</option>
+            <Input name="category" defaultValue={filters.category} placeholder="Kategori" aria-label="Filter kategori" className={selectClass} />
+            <Input name="supplier" defaultValue={filters.supplier} placeholder="Pemasok" aria-label="Filter pemasok" className={selectClass} />
+            <select name="status" defaultValue={filters.status} aria-label="Filter berdasarkan status" className={selectClass}>
+              <option value="">Semua status</option>
               {productStatuses.map((productStatus) => (
                 <option key={productStatus} value={productStatus}>{productStatusLabels[productStatus]}</option>
               ))}
             </select>
-            <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter berdasarkan kategori" className={selectClass}>
-              <option value="all">Semua kategori</option>{categories.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-            <select value={supplier} onChange={(event) => setSupplier(event.target.value)} aria-label="Filter berdasarkan pemasok" className={selectClass}>
-              <option value="all">Semua pemasok</option>{suppliers.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-            {filtersActive ? <Button type="button" variant="ghost" onClick={clearFilters} className="h-11 text-muted-foreground"><FilterX aria-hidden="true" />Hapus filter</Button> : null}
-            <p className="ml-auto text-sm text-muted-foreground">{filteredProducts.length} dari {products.length} produk</p>
-          </div>
+            <div className="flex gap-2 xl:justify-end">
+              <Button type="submit" className="h-11 flex-1 sm:flex-none"><Search aria-hidden="true" />Cari</Button>
+              {filtersActive ? <Button asChild variant="ghost" className="h-11"><Link href="/inventory"><FilterX aria-hidden="true" />Hapus filter</Link></Button> : null}
+              {role === "admin" ? <Button type="button" onClick={() => openEditor("new")} className="h-11 flex-1 rounded-lg px-4 shadow-none sm:flex-none"><Plus aria-hidden="true" />Tambah produk</Button> : null}
+            </div>
+          </form>
         </div>
 
         <div className="overflow-x-auto">
@@ -135,11 +101,11 @@ export function InventoryTable({ products, role }: { products: Product[]; role: 
             <caption className="sr-only">Produk inventaris batu mulia</caption>
             <thead>
               <tr className="border-b bg-muted/45 text-xs font-medium text-muted-foreground">
-                <th scope="col" className="px-5 py-3">SKU</th><th scope="col" className="px-4 py-3">Barcode</th><th scope="col" className="px-4 py-3">Produk</th><th scope="col" className="px-4 py-3">Kategori</th><th scope="col" className="px-4 py-3">Mutu</th><th scope="col" className="px-4 py-3 text-right">Berat</th><th scope="col" className="px-4 py-3">Pemasok</th><th scope="col" className="px-4 py-3 text-right">Modal</th><th scope="col" className="px-4 py-3 text-right">Harga jual</th><th scope="col" className="px-4 py-3">Status</th><th scope="col" className="px-4 py-3">Diterima</th><th scope="col" className="sticky right-0 bg-muted px-4 py-3 text-right">Tindakan</th>
+                <th scope="col" className="px-5 py-3">SKU</th><th scope="col" className="px-4 py-3">Barcode</th><th scope="col" className="px-4 py-3">Produk</th><th scope="col" className="px-4 py-3">Kategori</th><th scope="col" className="px-4 py-3">Mutu</th><th scope="col" className="px-4 py-3 text-right">Berat</th><th scope="col" className="px-4 py-3">Pemasok</th>{role === "admin" ? <th scope="col" className="px-4 py-3 text-right">Modal</th> : null}<th scope="col" className="px-4 py-3 text-right">Harga jual</th><th scope="col" className="px-4 py-3">Status</th><th scope="col" className="px-4 py-3">Diterima</th><th scope="col" className="sticky right-0 bg-muted px-4 py-3 text-right">Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filteredProducts.length ? filteredProducts.map((product) => (
+              {products.length ? products.map((product) => (
                 <tr key={product.id} className="bg-card transition-colors hover:bg-muted/30">
                   <td className="whitespace-nowrap px-5 py-4 font-semibold text-primary">{product.sku}</td>
                   <td className="px-4 py-3"><div className="w-32"><Barcode value={product.barcode || product.sku} compact /><p className="mt-1 truncate text-[11px] text-muted-foreground">{product.barcode || product.sku}</p></div></td>
@@ -148,7 +114,7 @@ export function InventoryTable({ products, role }: { products: Product[]; role: 
                   <td className="whitespace-nowrap px-4 py-4">{product.grade || "—"}</td>
                   <td className="whitespace-nowrap px-4 py-4 text-right tabular-nums">{product.weight_grams == null ? "—" : `${Number(product.weight_grams).toLocaleString("id-ID", { maximumFractionDigits: 3 })} g`}</td>
                   <td className="max-w-48 px-4 py-4 text-muted-foreground"><span className="line-clamp-2">{product.supplier_name || "—"}</span></td>
-                  <td className="whitespace-nowrap px-4 py-4 text-right tabular-nums text-muted-foreground">{formatRupiah(product.cost_price)}</td>
+                  {role === "admin" ? <td className="whitespace-nowrap px-4 py-4 text-right tabular-nums text-muted-foreground">{formatRupiah(product.cost_price ?? null)}</td> : null}
                   <td className="whitespace-nowrap px-4 py-4 text-right font-medium tabular-nums">{formatRupiah(product.selling_price)}</td>
                   <td className="px-4 py-4"><Badge variant="outline" className={product.status === "available" ? "border-primary/20 bg-primary/[0.07] text-primary" : "border-border bg-muted text-muted-foreground"}>{productStatusLabels[product.status]}</Badge></td>
                   <td className="whitespace-nowrap px-4 py-4 text-muted-foreground">{formatReceivedAt(product.received_at)}</td>
@@ -160,10 +126,20 @@ export function InventoryTable({ products, role }: { products: Product[]; role: 
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={12} className="px-6 py-16 text-center"><p className="font-medium">Tidak ada produk yang sesuai</p><p className="mt-1 text-sm text-muted-foreground">Ubah pencarian atau filter untuk melihat produk lainnya.</p></td></tr>
+                <tr><td colSpan={role === "admin" ? 12 : 11} className="px-6 py-16 text-center"><p className="font-medium">Tidak ada produk yang sesuai</p><p className="mt-1 text-sm text-muted-foreground">Ubah pencarian atau filter untuk melihat produk lainnya.</p></td></tr>
               )}
             </tbody>
           </table>
+        </div>
+        <div className="flex flex-col justify-between gap-3 border-t px-4 py-4 text-sm sm:flex-row sm:items-center sm:px-5">
+          <p className="text-muted-foreground">Menampilkan {firstRow}–{lastRow} dari {pagination.totalCount} produk</p>
+          <div className="flex items-center justify-between gap-3 sm:justify-end">
+            <span className="text-muted-foreground">Halaman {pagination.page} dari {pagination.totalPages}</span>
+            <div className="flex gap-2">
+              {pagination.previousHref ? <Button asChild type="button" variant="outline" className="h-10"><Link href={pagination.previousHref}>Sebelumnya</Link></Button> : <Button type="button" variant="outline" disabled className="h-10">Sebelumnya</Button>}
+              {pagination.nextHref ? <Button asChild type="button" variant="outline" className="h-10"><Link href={pagination.nextHref}>Berikutnya</Link></Button> : <Button type="button" variant="outline" disabled className="h-10">Berikutnya</Button>}
+            </div>
+          </div>
         </div>
       </div>
 

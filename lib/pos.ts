@@ -17,7 +17,6 @@ export type PosProduct = {
   barcode: string | null;
   name: string;
   category: string | null;
-  weight_grams: number | null;
   selling_price: number | null;
 };
 

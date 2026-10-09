@@ -78,26 +78,27 @@ function displayValue(value: unknown, fallback: string) {
 
 async function loadCashierDashboard(startIso: string, endIso: string): Promise<DashboardData> {
   const supabase = await createClient();
-  const [salesResult, inventoryResult, returnsResult] = await Promise.all([
+  const [salesResult, inventoryResult, returnsResult, itemsSoldResult] = await Promise.all([
     supabase
       .from("sales")
-      .select("id")
+      .select("id", { count: "exact", head: true })
       .gte("created_at", startIso)
       .lt("created_at", endIso),
     supabase
       .from("products")
       .select("id", { count: "exact", head: true })
       .eq("status", "available"),
+    supabase.rpc("get_today_return_count"),
     supabase
-      .from("returns")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", startIso)
-      .lt("created_at", endIso),
+      .from("sale_items")
+      .select("id, sales!inner(created_at)", { count: "exact", head: true })
+      .gte("sales.created_at", startIso)
+      .lt("sales.created_at", endIso),
   ]);
 
   const errors: string[] = [];
   if (salesResult.error) {
-    logQueryError("sales.today.select", salesResult.error);
+    logQueryError("sales.today.count", salesResult.error);
     errors.push("Transaksi hari ini tidak dapat dimuat.");
   }
   if (inventoryResult.error) {
@@ -105,39 +106,22 @@ async function loadCashierDashboard(startIso: string, endIso: string): Promise<D
     errors.push("Jumlah barang tersedia tidak dapat dimuat.");
   }
   if (returnsResult.error) {
-    logQueryError("returns.today.count", returnsResult.error);
+    logQueryError("rpc.get_today_return_count", returnsResult.error);
     errors.push("Jumlah retur hari ini tidak dapat dimuat.");
   }
-
-  let itemsSold: number | null = null;
-  let transactionCount: number | null = null;
-  if (!salesResult.error) {
-    const sales = salesResult.data ?? [];
-    transactionCount = sales.length;
-    if (sales.length === 0) {
-      itemsSold = 0;
-    } else {
-      const { data: items, error } = await supabase
-        .from("sale_items")
-        .select("id")
-        .in("sale_id", sales.map((sale) => sale.id));
-      if (error) {
-        logQueryError("sale_items.today.count", error);
-        errors.push("Jumlah barang terjual hari ini tidak dapat dimuat.");
-      } else {
-        itemsSold = items?.length ?? 0;
-      }
-    }
+  if (itemsSoldResult.error) {
+    logQueryError("sale_items.today.count", itemsSoldResult.error);
+    errors.push("Jumlah barang terjual hari ini tidak dapat dimuat.");
   }
 
   return {
     role: "cashier",
     financialReport: null,
     operational: {
-      transactionCount,
-      itemsSold,
+      transactionCount: salesResult.error ? null : salesResult.count ?? 0,
+      itemsSold: itemsSoldResult.error ? null : itemsSoldResult.count ?? 0,
       availableProducts: inventoryResult.error ? null : inventoryResult.count ?? 0,
-      returnCount: returnsResult.error ? null : returnsResult.count ?? 0,
+      returnCount: returnsResult.error ? null : Number(returnsResult.data ?? 0),
     },
     inventorySummary: null,
     recentSales: [],
@@ -149,9 +133,21 @@ async function loadCashierDashboard(startIso: string, endIso: string): Promise<D
 
 async function loadAdminDashboard(today: string): Promise<DashboardData> {
   const supabase = await createClient();
-  const [financialResult, inventoryResult, salesResult, movementsResult, returnsResult] = await Promise.all([
+  const [
+    financialResult,
+    availableProductsResult,
+    soldProductsResult,
+    returnedOrInactiveProductsResult,
+    totalProductsResult,
+    salesResult,
+    movementsResult,
+    returnsResult,
+  ] = await Promise.all([
     getFinancialReport(today, today),
-    supabase.from("products").select("id, status"),
+    supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "available"),
+    supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "sold"),
+    supabase.from("products").select("id", { count: "exact", head: true }).in("status", ["returned", "inactive"]),
+    supabase.from("products").select("id", { count: "exact", head: true }),
     supabase
       .from("sales")
       .select("id, invoice_number, customer_name, created_at")
@@ -171,8 +167,17 @@ async function loadAdminDashboard(today: string): Promise<DashboardData> {
 
   const errors: string[] = [];
   if (financialResult.error) errors.push(financialResult.error);
-  if (inventoryResult.error) {
-    logQueryError("products.status.summary", inventoryResult.error);
+  const inventoryCountErrors = [
+    ["products.available.count", availableProductsResult.error],
+    ["products.sold.count", soldProductsResult.error],
+    ["products.returned_or_inactive.count", returnedOrInactiveProductsResult.error],
+    ["products.total.count", totalProductsResult.error],
+  ] as const;
+  for (const [query, error] of inventoryCountErrors) {
+    if (error) logQueryError(query, error);
+  }
+  const inventorySummaryError = inventoryCountErrors.some(([, error]) => error !== null);
+  if (inventorySummaryError) {
     errors.push("Ringkasan inventaris tidak dapat dimuat.");
   }
   if (salesResult.error) {
@@ -188,12 +193,11 @@ async function loadAdminDashboard(today: string): Promise<DashboardData> {
     errors.push("Aktivitas retur tidak dapat dimuat.");
   }
 
-  const productStatuses = inventoryResult.data ?? [];
-  const inventorySummary = inventoryResult.error ? null : {
-    available: productStatuses.filter((product) => product.status === "available").length,
-    sold: productStatuses.filter((product) => product.status === "sold").length,
-    returnedOrInactive: productStatuses.filter((product) => product.status === "returned" || product.status === "inactive").length,
-    total: productStatuses.length,
+  const inventorySummary = inventorySummaryError ? null : {
+    available: availableProductsResult.count ?? 0,
+    sold: soldProductsResult.count ?? 0,
+    returnedOrInactive: returnedOrInactiveProductsResult.count ?? 0,
+    total: totalProductsResult.count ?? 0,
   };
 
   const movementRows = movementsResult.data ?? [];

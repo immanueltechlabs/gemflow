@@ -1,29 +1,15 @@
 import type { Metadata } from "next";
-import { Barcode, CircleAlert, ShoppingBag } from "lucide-react";
+import { Barcode, ShoppingBag } from "lucide-react";
 
 import { PosTerminal } from "@/components/pos-terminal";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { getCurrentProfile } from "@/lib/auth";
-import type { PosProduct } from "@/lib/pos";
-import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Kasir | GemFlow" };
 export const instant = false;
 
-async function loadAvailableProducts() {
-  const supabase = await createClient();
-  return supabase
-    .from("products")
-    .select("id, sku, barcode, name, category, weight_grams, selling_price")
-    .eq("status", "available")
-    .order("name", { ascending: true });
-}
-
 export default async function PosPage() {
-  const [profile, productResult] = await Promise.all([
-    getCurrentProfile(),
-    loadAvailableProducts(),
-  ]);
+  const profile = await getCurrentProfile();
 
   return (
     <WorkspaceShell profile={profile}>
@@ -40,25 +26,11 @@ export default async function PosPage() {
         </div>
         <div className="flex w-fit items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground">
           <Barcode aria-hidden="true" className="size-4 text-primary" />
-          {productResult.data?.length ?? 0} produk tersedia
+          Pemindaian barcode aktif
         </div>
       </div>
 
-      {productResult.error ? (
-        <div role="alert" className="rounded-xl border border-destructive/25 bg-destructive/10 p-5">
-          <div className="flex items-start gap-3">
-            <CircleAlert aria-hidden="true" className="mt-0.5 size-5 text-destructive" />
-            <div>
-              <h2 className="font-semibold text-destructive">Produk kasir tidak dapat dimuat</h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Periksa akses baca produk untuk akun terautentikasi, lalu muat ulang halaman.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <PosTerminal products={(productResult.data ?? []) as PosProduct[]} />
-      )}
+      <PosTerminal />
     </WorkspaceShell>
   );
 }

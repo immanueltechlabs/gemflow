@@ -1,13 +1,14 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarDays, CircleAlert, CircleCheck, LoaderCircle, Pencil, Plus, ReceiptText, Trash2, X } from "lucide-react";
 
 import { createExpense, deleteExpense, updateExpense } from "@/app/expenses/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { expenseCategories, initialExpenseActionState, type Expense } from "@/lib/expenses";
+import { expenseCategories, initialExpenseActionState, type Expense, type ExpenseFilters, type ExpensePagination } from "@/lib/expenses";
 import type { UserRole } from "@/lib/auth";
 import { formatRupiah } from "@/lib/inventory";
 
@@ -105,31 +106,30 @@ function ExpenseForm({
   );
 }
 
-export function ExpensesWorkbench({ expenses, role }: { expenses: Expense[]; role: UserRole }) {
+export function ExpensesWorkbench({
+  expenses,
+  role,
+  filters,
+  pagination,
+  totalExpense,
+  totalError,
+  filterError,
+}: {
+  expenses: Expense[];
+  role: UserRole;
+  filters: ExpenseFilters;
+  pagination: ExpensePagination;
+  totalExpense: number | null;
+  totalError: string;
+  filterError: string;
+}) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [editing, setEditing] = useState<Expense | null | "new">(null);
   const [notice, setNotice] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [deletePending, startDelete] = useTransition();
-
-  const filteredExpenses = useMemo(() => {
-    const search = query.trim().toLocaleLowerCase();
-    return expenses.filter((expense) =>
-      (!search || expense.description.toLocaleLowerCase().includes(search)) &&
-      (category === "all" || expense.category === category) &&
-      (!dateFrom || expense.expense_date >= dateFrom) &&
-      (!dateTo || expense.expense_date <= dateTo),
-    );
-  }, [category, dateFrom, dateTo, expenses, query]);
-
-  const filteredTotal = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-  const categories = [...new Set([...expenseCategories, ...expenses.map((expense) => expense.category)])];
 
   const closeEditor = useCallback(() => {
     dialogRef.current?.close();
@@ -166,14 +166,9 @@ export function ExpensesWorkbench({ expenses, role }: { expenses: Expense[]; rol
     });
   };
 
-  const clearFilters = () => {
-    setQuery("");
-    setCategory("all");
-    setDateFrom("");
-    setDateTo("");
-  };
-
-  const filtersActive = Boolean(query || category !== "all" || dateFrom || dateTo);
+  const filtersActive = Boolean(filters.query || filters.category || filters.dateFrom || filters.dateTo);
+  const firstRow = pagination.totalCount ? (pagination.page - 1) * pagination.pageSize + 1 : 0;
+  const lastRow = Math.min(pagination.page * pagination.pageSize, pagination.totalCount);
 
   return (
     <>
@@ -184,34 +179,41 @@ export function ExpensesWorkbench({ expenses, role }: { expenses: Expense[]; rol
         </div>
       ) : null}
 
+      {filterError ? (
+        <div role="alert" className="mb-5 rounded-lg border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <span className="flex items-center gap-2"><CircleAlert aria-hidden="true" className="size-4" />{filterError}</span>
+        </div>
+      ) : null}
+
       <section aria-label="Filter pengeluaran" className="mb-5 rounded-xl border bg-card p-4 sm:p-5">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1.5fr)_minmax(140px,1fr)_repeat(2,minmax(130px,0.9fr))_auto]">
+        <form method="get" action="/expenses" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1.5fr)_minmax(140px,1fr)_repeat(2,minmax(130px,0.9fr))_auto]">
           <div className="space-y-2">
             <label htmlFor="expense-search" className="text-sm font-medium">Cari deskripsi</label>
-            <Input id="expense-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari pengeluaran" className={inputClass} />
+            <Input id="expense-search" name="query" defaultValue={filters.query} placeholder="Cari pengeluaran" className={inputClass} />
           </div>
           <div className="space-y-2">
             <label htmlFor="expense-filter-category" className="text-sm font-medium">Kategori</label>
-            <select id="expense-filter-category" value={category} onChange={(event) => setCategory(event.target.value)} className={`${inputClass} w-full border border-input bg-background px-3 text-sm focus-visible:outline-none`}>
-              <option value="all">Semua kategori</option>
-              {categories.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
+            <Input id="expense-filter-category" name="category" list="expense-categories" defaultValue={filters.category} placeholder="Semua kategori" className={inputClass} />
+            <datalist id="expense-categories">
+              {expenseCategories.map((value) => <option key={value} value={value} />)}
+            </datalist>
           </div>
           <div className="space-y-2">
             <label htmlFor="expense-date-from" className="text-sm font-medium">Dari tanggal</label>
-            <Input id="expense-date-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className={inputClass} />
+            <Input id="expense-date-from" name="dateFrom" type="date" defaultValue={filters.dateFrom} className={inputClass} />
           </div>
           <div className="space-y-2">
             <label htmlFor="expense-date-to" className="text-sm font-medium">Sampai tanggal</label>
-            <Input id="expense-date-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className={inputClass} />
+            <Input id="expense-date-to" name="dateTo" type="date" defaultValue={filters.dateTo} className={inputClass} />
           </div>
           <div className="flex items-end gap-2 xl:justify-end">
-            {filtersActive ? <Button type="button" variant="ghost" onClick={clearFilters} className="h-11">Hapus filter</Button> : null}
+            <Button type="submit" className="h-11 flex-1 sm:flex-none">Terapkan</Button>
+            {filtersActive ? <Button asChild variant="ghost" className="h-11"><Link href="/expenses">Hapus filter</Link></Button> : null}
             <Button type="button" onClick={() => openEditor("new")} className="h-11 w-full sm:w-auto">
               <Plus aria-hidden="true" />Tambah pengeluaran
             </Button>
           </div>
-        </div>
+        </form>
       </section>
 
       {deleteError ? (
@@ -224,14 +226,17 @@ export function ExpensesWorkbench({ expenses, role }: { expenses: Expense[]; rol
         <div className="flex flex-col justify-between gap-2 border-b p-4 sm:flex-row sm:items-center sm:p-5">
           <div>
             <h2 id="expense-list-heading" className="font-semibold">Daftar pengeluaran</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{filteredExpenses.length} catatan</p>
+            <p className="mt-1 text-sm text-muted-foreground">Menampilkan {firstRow}–{lastRow} dari {pagination.totalCount} catatan</p>
           </div>
-          <p className="text-sm text-muted-foreground">Total terfilter <span className="ml-1 font-semibold tabular-nums text-foreground">{formatRupiah(filteredTotal)}</span></p>
+          <div className="text-sm text-muted-foreground">
+            <p>Total terfilter <span className="ml-1 font-semibold tabular-nums text-foreground">{totalExpense === null ? "—" : formatRupiah(totalExpense)}</span></p>
+            {totalError ? <p role="status" className="mt-1 max-w-md text-xs">{totalError}</p> : null}
+          </div>
         </div>
 
-        {filteredExpenses.length ? (
+        {expenses.length ? (
           <ul className="divide-y">
-            {filteredExpenses.map((expense) => (
+            {expenses.map((expense) => (
               <li key={expense.id} className="grid gap-3 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(110px,0.7fr)_minmax(125px,0.8fr)_minmax(180px,1.6fr)_minmax(130px,0.9fr)_minmax(160px,1.1fr)_auto] lg:items-center">
                 <div>
                   <p className="text-xs text-muted-foreground lg:hidden">Tanggal</p>
@@ -274,12 +279,20 @@ export function ExpensesWorkbench({ expenses, role }: { expenses: Expense[]; rol
         ) : (
           <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
             <ReceiptText aria-hidden="true" className="size-6 text-muted-foreground" />
-            <p className="mt-3 font-medium">{expenses.length ? "Tidak ada pengeluaran yang cocok" : "Belum ada pengeluaran"}</p>
+            <p className="mt-3 font-medium">{filtersActive ? "Tidak ada pengeluaran yang cocok" : "Belum ada pengeluaran"}</p>
             <p className="mt-1 max-w-sm text-sm leading-5 text-muted-foreground">
-              {expenses.length ? "Ubah filter atau rentang tanggal untuk melihat catatan lainnya." : "Tambahkan pengeluaran pertama untuk mulai mencatat biaya operasional."}
+              {filtersActive ? "Ubah filter atau rentang tanggal untuk melihat catatan lainnya." : "Tambahkan pengeluaran pertama untuk mulai mencatat biaya operasional."}
             </p>
+            {filtersActive ? <Button asChild type="button" variant="outline" className="mt-4 h-10"><Link href="/expenses">Hapus filter</Link></Button> : null}
           </div>
         )}
+        <div className="flex flex-col justify-between gap-3 border-t px-4 py-4 text-sm sm:flex-row sm:items-center sm:px-5">
+          <span className="text-muted-foreground">Halaman {pagination.page} dari {pagination.totalPages}</span>
+          <div className="flex gap-2">
+            {pagination.previousHref ? <Button asChild type="button" variant="outline" className="h-10"><Link href={pagination.previousHref}>Sebelumnya</Link></Button> : <Button type="button" variant="outline" disabled className="h-10">Sebelumnya</Button>}
+            {pagination.nextHref ? <Button asChild type="button" variant="outline" className="h-10"><Link href={pagination.nextHref}>Berikutnya</Link></Button> : <Button type="button" variant="outline" disabled className="h-10">Berikutnya</Button>}
+          </div>
+        </div>
       </section>
 
       <dialog ref={dialogRef} onClose={() => setEditing(null)} className="m-auto max-h-[calc(100svh-2rem)] w-[min(640px,calc(100%-2rem))] overflow-y-auto rounded-xl border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/50">

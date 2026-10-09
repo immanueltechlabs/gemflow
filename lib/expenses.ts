@@ -22,6 +22,22 @@ export type Expense = {
   creator_label: string;
 };
 
+export type ExpenseFilters = {
+  dateFrom: string;
+  dateTo: string;
+  category: string;
+  query: string;
+};
+
+export type ExpensePagination = {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  previousHref: string | null;
+  nextHref: string | null;
+};
+
 export type ExpenseActionState = {
   status: "idle" | "success" | "error";
   message: string;
