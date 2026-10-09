@@ -164,7 +164,7 @@ async function loadAdminDashboard(today: string): Promise<DashboardData> {
       .limit(5),
     supabase
       .from("returns")
-      .select("id, return_number, refund_amount, created_at")
+      .select("id, return_number, total_refund, created_at")
       .order("created_at", { ascending: false })
       .limit(5),
   ]);
@@ -226,7 +226,7 @@ async function loadAdminDashboard(today: string): Promise<DashboardData> {
   const recentReturns: DashboardReturnActivity[] = (returnsResult.data ?? []).map((item) => ({
     id: item.id,
     returnNumber: displayValue(item.return_number, item.id),
-    refundAmount: Number(item.refund_amount ?? 0),
+    totalRefund: Number(item.total_refund ?? 0),
     createdAt: item.created_at,
   }));
 

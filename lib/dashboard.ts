@@ -33,7 +33,7 @@ export type DashboardStockActivity = {
 export type DashboardReturnActivity = {
   id: string;
   returnNumber: string;
-  refundAmount: number;
+  totalRefund: number;
   createdAt: string;
 };
 

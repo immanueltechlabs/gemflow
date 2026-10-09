@@ -165,7 +165,7 @@ function RecentActivity({ data }: { data: DashboardData }) {
           emptyMessage="Belum ada retur hari ini."
           renderItem={(item) => <>
             <p className="truncate text-sm font-medium">{item.returnNumber}</p>
-            <p className="mt-1 truncate text-xs text-muted-foreground">Pengembalian {formatRupiah(item.refundAmount)}</p>
+            <p className="mt-1 truncate text-xs text-muted-foreground">Pengembalian {formatRupiah(item.totalRefund)}</p>
           </>}
         />
       </div>
