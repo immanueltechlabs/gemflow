@@ -1,4 +1,14 @@
-export type ProductStatus = "active" | "inactive";
+export const productStatuses = ["available", "reserved", "sold", "returned", "inactive"] as const;
+
+export type ProductStatus = (typeof productStatuses)[number];
+
+export const productStatusLabels: Record<ProductStatus, string> = {
+  available: "Aktif",
+  reserved: "Dipesan",
+  sold: "Terjual",
+  returned: "Diretur",
+  inactive: "Nonaktif",
+};
 
 export type Product = {
   id: string;
@@ -11,7 +21,7 @@ export type Product = {
   supplier_name: string | null;
   cost_price: number | null;
   selling_price: number | null;
-  status: ProductStatus | string;
+  status: ProductStatus;
   received_at: string | null;
 };
 

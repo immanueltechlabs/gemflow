@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getCurrentProfile } from "@/lib/auth";
-import type { InventoryActionState } from "@/lib/inventory";
+import { productStatuses, type InventoryActionState, type ProductStatus } from "@/lib/inventory";
 import { productSelect } from "@/lib/inventory";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,7 +16,7 @@ type ProductInput = {
   supplier_name: string;
   cost_price: number;
   selling_price: number;
-  status: "active" | "inactive";
+  status: ProductStatus;
   received_at: string;
 };
 
@@ -53,7 +53,8 @@ function parseProductInput(formData: FormData): ProductInput | string {
   if (sellingPrice < costPrice) {
     return "Harga jual tidak boleh lebih rendah dari harga modal.";
   }
-  if (status !== "active" && status !== "inactive") {
+  const productStatus = productStatuses.find((allowedStatus) => allowedStatus === status);
+  if (!productStatus) {
     return "Pilih status produk yang valid.";
   }
 
@@ -71,25 +72,41 @@ function parseProductInput(formData: FormData): ProductInput | string {
     supplier_name: supplierName,
     cost_price: costPrice,
     selling_price: sellingPrice,
-    status,
+    status: productStatus,
     received_at: receivedDate.toISOString(),
   };
 }
 
-function mutationError(operation: string, error: { code?: string; message: string }) {
-  if (process.env.NODE_ENV !== "production") {
-    console.error(`[GemFlow inventaris] ${operation}: ${error.code ?? "unknown"} ${error.message}`);
+type SupabaseMutationError = {
+  code?: string;
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function logSupabaseError(statement: string, error: SupabaseMutationError) {
+  if (process.env.NODE_ENV === "development") {
+    console.error(
+      `[GemFlow Supabase] ${statement} ${JSON.stringify({
+        code: error.code ?? "unknown",
+        message: error.message,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+      })}`,
+    );
   }
+}
+
+function mutationError(
+  operation: string,
+  error: SupabaseMutationError,
+  statement = operation,
+) {
+  logSupabaseError(statement, error);
   if (error.code === "42501" || /row-level security|permission denied/i.test(error.message)) {
     return `${operation} diblokir oleh keamanan basis data. Peran Admin yang terautentikasi memerlukan kebijakan RLS yang mengizinkan operasi ini dengan syarat profiles.role = 'admin'.`;
   }
   return `${operation} gagal. Coba lagi atau hubungi administrator.`;
-}
-
-function nextSku(previousSku?: string | null) {
-  const match = previousSku?.match(/^GEM-(\d{6})$/);
-  const nextNumber = match ? Number(match[1]) + 1 : 1;
-  return `GEM-${String(nextNumber).padStart(6, "0")}`;
 }
 
 export async function createProduct(
@@ -105,57 +122,28 @@ export async function createProduct(
   if (typeof input === "string") return { status: "error", message: input };
 
   const supabase = await createClient();
-  let createdProduct: { id: string; sku: string } | null = null;
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const { data: latest } = await supabase
-      .from("products")
-      .select("sku")
-      .like("sku", "GEM-%")
-      .order("sku", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const sku = nextSku(latest?.sku);
-    const { data, error } = await supabase
-      .from("products")
-      .insert({ ...input, sku, barcode: input.barcode || sku })
-      .select("id, sku")
-      .single();
-
-    if (!error) {
-      createdProduct = data;
-      break;
-    }
-    if (error.code !== "23505" || input.barcode) {
-      return { status: "error", message: mutationError("Pembuatan produk", error) };
-    }
-  }
-
-  if (!createdProduct) {
-    return { status: "error", message: "SKU unik tidak dapat dibuat setelah beberapa percobaan. Coba lagi." };
-  }
-
-  const { error: movementError } = await supabase.from("stock_movements").insert({
-    product_id: createdProduct.id,
-    movement_type: "stock_in",
-    performed_by: profile.userId,
+  const { error } = await supabase.rpc("create_inventory_product", {
+    p_name: input.name,
+    p_category: input.category,
+    p_grade: input.grade,
+    p_weight_grams: input.weight_grams,
+    p_supplier_name: input.supplier_name,
+    p_cost_price: input.cost_price,
+    p_selling_price: input.selling_price,
+    p_received_at: input.received_at,
+    p_status: input.status,
   });
 
-  if (movementError) {
-    const { error: deactivateError } = await supabase
-      .from("products")
-      .update({ status: "inactive" })
-      .eq("id", createdProduct.id);
+  if (error) {
+    logSupabaseError("rpc(create_inventory_product)", error);
     return {
       status: "error",
-      message: deactivateError
-        ? `${mutationError("Pergerakan stok awal", movementError)} Produk berhasil dibuat, tetapi penonaktifan otomatis juga diblokir. Kebijakan UPDATE pada products dan INSERT pada stock_movements harus mengizinkan Admin yang terautentikasi.`
-        : `${mutationError("Pergerakan stok awal", movementError)} Produk ditandai tidak aktif agar tidak digunakan tanpa catatan stok.`,
+      message: "Pembuatan produk gagal. Coba lagi atau hubungi administrator.",
     };
   }
 
   revalidatePath("/inventory");
-  return { status: "success", message: `${createdProduct.sku} berhasil ditambahkan ke inventaris.` };
+  return { status: "success", message: "Produk berhasil ditambahkan ke inventaris." };
 }
 
 export async function updateProduct(
@@ -181,7 +169,10 @@ export async function updateProduct(
       .eq("id", productId)
       .single();
     if (lookupError) {
-      return { status: "error", message: mutationError("Pencarian produk", lookupError) };
+      return {
+        status: "error",
+        message: mutationError("Pencarian produk", lookupError, "products.select(sku)"),
+      };
     }
     input.barcode = currentProduct.sku;
   }
@@ -192,7 +183,12 @@ export async function updateProduct(
     .select(productSelect)
     .single();
 
-  if (error) return { status: "error", message: mutationError("Pembaruan produk", error) };
+  if (error) {
+    return {
+      status: "error",
+      message: mutationError("Pembaruan produk", error, "products.update"),
+    };
+  }
 
   revalidatePath("/inventory");
   revalidatePath(`/inventory/${productId}/label`);

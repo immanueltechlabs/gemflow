@@ -19,7 +19,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { UserRole } from "@/lib/auth";
-import { formatReceivedAt, formatRupiah, type Product } from "@/lib/inventory";
+import {
+  formatReceivedAt,
+  formatRupiah,
+  productStatuses,
+  productStatusLabels,
+  type Product,
+} from "@/lib/inventory";
 
 const selectClass = "h-11 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25";
 
@@ -108,7 +114,10 @@ export function InventoryTable({ products, role }: { products: Product[]; role: 
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter berdasarkan status" className={selectClass}>
-              <option value="all">Semua status</option><option value="active">Aktif</option><option value="inactive">Tidak aktif</option>
+              <option value="all">Semua status</option>
+              {productStatuses.map((productStatus) => (
+                <option key={productStatus} value={productStatus}>{productStatusLabels[productStatus]}</option>
+              ))}
             </select>
             <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter berdasarkan kategori" className={selectClass}>
               <option value="all">Semua kategori</option>{categories.map((value) => <option key={value} value={value}>{value}</option>)}
@@ -141,7 +150,7 @@ export function InventoryTable({ products, role }: { products: Product[]; role: 
                   <td className="max-w-48 px-4 py-4 text-muted-foreground"><span className="line-clamp-2">{product.supplier_name || "—"}</span></td>
                   <td className="whitespace-nowrap px-4 py-4 text-right tabular-nums text-muted-foreground">{formatRupiah(product.cost_price)}</td>
                   <td className="whitespace-nowrap px-4 py-4 text-right font-medium tabular-nums">{formatRupiah(product.selling_price)}</td>
-                  <td className="px-4 py-4"><Badge variant="outline" className={product.status === "active" ? "border-primary/20 bg-primary/[0.07] text-primary" : "border-border bg-muted text-muted-foreground"}>{product.status === "active" ? "Aktif" : product.status === "inactive" ? "Tidak aktif" : product.status}</Badge></td>
+                  <td className="px-4 py-4"><Badge variant="outline" className={product.status === "available" ? "border-primary/20 bg-primary/[0.07] text-primary" : "border-border bg-muted text-muted-foreground"}>{productStatusLabels[product.status]}</Badge></td>
                   <td className="whitespace-nowrap px-4 py-4 text-muted-foreground">{formatReceivedAt(product.received_at)}</td>
                   <td className="sticky right-0 bg-card px-4 py-3">
                     <div className="flex justify-end gap-1">

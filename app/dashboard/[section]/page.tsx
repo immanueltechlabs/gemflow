@@ -7,10 +7,9 @@ import { getCurrentProfile } from "@/lib/auth";
 
 const sections = {
   inventory: { title: "Inventaris", description: "Pengelolaan produk dan stok akan tersedia di sini.", adminOnly: false },
-  pos: { title: "Kasir", description: "Proses pembayaran GemFlow akan tersedia di sini.", adminOnly: false },
   "stock-movements": { title: "Pergerakan Stok", description: "Riwayat dan kendali pergerakan stok akan tersedia di sini.", adminOnly: true },
   returns: { title: "Retur", description: "Proses dan riwayat retur akan tersedia di sini.", adminOnly: false },
-  expenses: { title: "Pengeluaran", description: "Pencatatan pengeluaran bisnis akan tersedia di sini.", adminOnly: true },
+  expenses: { title: "Pengeluaran", description: "Pencatatan pengeluaran bisnis akan tersedia di sini.", adminOnly: false },
   reports: { title: "Laporan", description: "Laporan penjualan dan inventaris akan tersedia di sini.", adminOnly: true },
 } as const;
 
@@ -25,6 +24,10 @@ export async function generateMetadata({ params }: { params: Promise<{ section: 
 export default async function SectionPage({ params }: { params: Promise<{ section: string }> }) {
   const [{ section }, profile] = await Promise.all([params, getCurrentProfile()]);
   if (section === "inventory") redirect("/inventory");
+  if (section === "pos") redirect("/pos");
+  if (section === "returns") redirect("/returns");
+  if (section === "expenses") redirect("/expenses");
+  if (section === "reports") redirect("/reports");
   const config = sections[section as SectionKey];
   if (!config) notFound();
   if (config.adminOnly && profile.role !== "admin") redirect("/dashboard");

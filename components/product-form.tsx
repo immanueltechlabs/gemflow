@@ -7,7 +7,12 @@ import { createProduct, updateProduct } from "@/app/inventory/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { initialInventoryActionState, type Product } from "@/lib/inventory";
+import {
+  initialInventoryActionState,
+  productStatuses,
+  productStatusLabels,
+  type Product,
+} from "@/lib/inventory";
 
 function localDateTime(value?: string | null) {
   const date = value ? new Date(value) : new Date();
@@ -77,18 +82,33 @@ export function ProductForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor="product-status">Status</Label>
-          <select id="product-status" name="status" defaultValue={product?.status ?? "active"} required className={`${fieldClass} w-full border border-input px-3 text-sm focus-visible:outline-none`}>
-            <option value="active">Aktif</option>
-            <option value="inactive">Tidak aktif</option>
+          <select
+            id="product-status"
+            name="status"
+            defaultValue={product && productStatuses.includes(product.status) ? product.status : "available"}
+            required
+            className={`${fieldClass} w-full border border-input px-3 text-sm focus-visible:outline-none`}
+          >
+            {productStatuses.map((status) => (
+              <option key={status} value={status}>{productStatusLabels[status]}</option>
+            ))}
           </select>
         </div>
 
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="product-barcode">Barcode internal</Label>
-          <Input id="product-barcode" name="barcode" defaultValue={product?.barcode ?? ""} maxLength={80} placeholder={product ? "Nilai barcode" : "SKU yang dibuat akan digunakan secara otomatis"} className={fieldClass} />
-          <p className="text-xs leading-5 text-muted-foreground">
-            {product ? "Ubah hanya jika barang ini menggunakan barcode internal yang berbeda." : "Biarkan kosong untuk menggunakan SKU yang dibuat dengan format GEM-000001."}
-          </p>
+          {product ? (
+            <>
+              <Input id="product-barcode" name="barcode" defaultValue={product.barcode ?? ""} maxLength={80} placeholder="Nilai barcode" className={fieldClass} />
+              <p className="text-xs leading-5 text-muted-foreground">
+                Ubah hanya jika barang ini menggunakan barcode internal yang berbeda.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm leading-5 text-muted-foreground">
+              Barcode akan menggunakan SKU yang dibuat secara otomatis.
+            </p>
+          )}
         </div>
       </div>
 

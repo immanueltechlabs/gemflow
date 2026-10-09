@@ -26,11 +26,11 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: "Dasbor", href: "/dashboard", icon: LayoutDashboard },
   { label: "Inventaris", href: "/inventory", icon: Boxes },
-  { label: "Kasir", href: "/dashboard/pos", icon: ShoppingBag },
+  { label: "Kasir", href: "/pos", icon: ShoppingBag },
   { label: "Pergerakan Stok", href: "/dashboard/stock-movements", icon: ArrowLeftRight, adminOnly: true },
-  { label: "Retur", href: "/dashboard/returns", icon: RotateCcw },
-  { label: "Pengeluaran", href: "/dashboard/expenses", icon: ReceiptText, adminOnly: true },
-  { label: "Laporan", href: "/dashboard/reports", icon: ChartNoAxesCombined, adminOnly: true },
+  { label: "Retur", href: "/returns", icon: RotateCcw },
+  { label: "Pengeluaran", href: "/expenses", icon: ReceiptText },
+  { label: "Laporan", href: "/reports", icon: ChartNoAxesCombined, adminOnly: true },
 ];
 
 export function DashboardNav({ role, onNavigate }: { role: UserRole; onNavigate?: () => void }) {
