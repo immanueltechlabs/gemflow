@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
 import { ArrowLeftRight, CircleAlert } from "lucide-react";
 
 import { StockMovementsWorkbench } from "@/components/stock-movements-workbench";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { getCurrentProfile } from "@/lib/auth";
 import { shiftDate } from "@/lib/report-dates";
-import type {
-  StockMovement,
-  StockMovementFilters,
-  StockMovementPagination,
-  StockMovementStaffOption,
+import {
+  stockMovementTypes,
+  type StockMovement,
+  type StockMovementFilters,
+  type StockMovementPagination,
+  type StockMovementStaffOption,
 } from "@/lib/stock-movements";
 import { createClient } from "@/lib/supabase/server";
 
@@ -122,13 +124,18 @@ export default async function StockMovementsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  noStore();
+
   const profile = await getCurrentProfile();
   const supabase = await createClient();
   const params = await searchParams;
+  const requestedMovementType = firstParam(params.movementType).trim();
+  const isValidMovementType = !requestedMovementType ||
+    stockMovementTypes.some((type) => type === requestedMovementType);
   const filters: StockMovementFilters = {
     dateFrom: firstParam(params.dateFrom).trim(),
     dateTo: firstParam(params.dateTo).trim(),
-    movementType: firstParam(params.movementType).trim().slice(0, 40),
+    movementType: isValidMovementType ? requestedMovementType : "",
     performedBy: firstParam(params.performedBy).trim(),
     productQuery: firstParam(params.productQuery).trim().slice(0, 100),
   };
@@ -138,6 +145,8 @@ export default async function StockMovementsPage({
 
   if ((filters.dateFrom && !isValidDate(filters.dateFrom)) || (filters.dateTo && !isValidDate(filters.dateTo))) {
     filterError = "Pilih rentang tanggal yang valid.";
+  } else if (!isValidMovementType) {
+    filterError = "Jenis pergerakan tidak valid.";
   } else if (filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo) {
     filterError = "Tanggal awal tidak boleh melewati tanggal akhir.";
   } else if (filters.performedBy && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.performedBy)) {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_noStore as noStore } from "next/cache";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -154,16 +155,19 @@ async function loadAdminDashboard(today: string): Promise<DashboardData> {
       .from("sales")
       .select("id, invoice_number, customer_name, created_at")
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(5),
     supabase
       .from("stock_movements")
       .select("id, movement_type, product_id, created_at")
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(5),
     supabase
       .from("returns")
       .select("id, return_number, total_refund, created_at")
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(5),
   ]);
 
@@ -254,6 +258,8 @@ async function loadAdminDashboard(today: string): Promise<DashboardData> {
 }
 
 export default async function DashboardPage() {
+  noStore();
+
   const profile = await getCurrentProfile();
   const today = getJakartaDate();
   const tomorrow = shiftDate(today, 1);

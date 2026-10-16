@@ -32,7 +32,13 @@ function looksLikeSkuOrBarcode(value: string) {
   return /^[a-z0-9_-]+$/i.test(normalized) && /[0-9_-]/.test(normalized);
 }
 
-export function PosTerminal() {
+export function PosTerminal({
+  defaultProducts,
+  defaultProductsError,
+}: {
+  defaultProducts: PosProduct[];
+  defaultProductsError: string;
+}) {
   const router = useRouter();
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const searchSequenceRef = useRef(0);
@@ -60,6 +66,8 @@ export function PosTerminal() {
   const change = Math.max(0, amountPaid - total);
   const discountInvalid = discountAmount < 0 || discountAmount > subtotal;
   const cashInsufficient = paymentMethod === "cash" && amountPaid < total;
+  const showingDefaults = search.trim().length === 0;
+  const visibleProducts = showingDefaults ? defaultProducts : searchResults;
 
   useEffect(() => {
     const query = search.trim();
@@ -212,9 +220,13 @@ export function PosTerminal() {
                   ? "Tekan Enter untuk memindai SKU/barcode."
                   : searchMessage || (searchResults.length
                     ? `${searchResults.length} hasil pencarian`
-                    : "Pindai barcode/SKU atau ketik minimal 3 karakter nama produk")))}
+                    : showingDefaults
+                      ? "Produk tersedia terbaru"
+                      : "Pindai barcode/SKU atau ketik minimal 3 karakter nama produk")))}
           </span>
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{searchResults.length} hasil</span>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {showingDefaults ? `${defaultProducts.length} produk` : `${searchResults.length} hasil`}
+          </span>
         </div>
 
         <div className="max-h-[62svh] min-h-72 overflow-y-auto xl:max-h-[calc(100svh-21rem)]">
@@ -222,9 +234,9 @@ export function PosTerminal() {
             <div role="status" className="flex min-h-72 items-center justify-center gap-3 text-sm text-muted-foreground">
               <LoaderCircle aria-hidden="true" className="size-5 animate-spin text-primary" />Mencari produk
             </div>
-          ) : searchResults.length ? (
+          ) : visibleProducts.length ? (
             <ul className="divide-y px-4 sm:px-5">
-              {searchResults.map((product) => {
+              {visibleProducts.map((product) => {
                 const alreadyAdded = cart.some((item) => item.id === product.id);
                 return (
                   <li key={product.id} className="flex min-h-[84px] items-center gap-3 py-3">
@@ -240,14 +252,14 @@ export function PosTerminal() {
                     <Button
                       type="button"
                       variant={alreadyAdded ? "secondary" : "outline"}
-                      size="icon"
                       disabled={alreadyAdded}
                       onClick={() => addProduct(product)}
                       aria-label={alreadyAdded ? `${product.name} sudah di keranjang` : `Tambahkan ${product.name}`}
                       title={alreadyAdded ? "Sudah di keranjang" : "Tambahkan ke keranjang"}
-                      className="size-11 shrink-0"
+                      className="h-11 shrink-0 gap-1.5 px-3"
                     >
                       {alreadyAdded ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}
+                      {alreadyAdded ? "Di keranjang" : "Tambah"}
                     </Button>
                   </li>
                 );
@@ -255,22 +267,34 @@ export function PosTerminal() {
             </ul>
           ) : (
             <div className="flex min-h-72 flex-col items-center justify-center px-6 text-center">
-              {searchError ? <CircleAlert aria-hidden="true" className="size-6 text-destructive" /> : <Search aria-hidden="true" className="size-6 text-muted-foreground" />}
+              {searchError || (showingDefaults && defaultProductsError)
+                ? <CircleAlert aria-hidden="true" className="size-6 text-destructive" />
+                : <Search aria-hidden="true" className="size-6 text-muted-foreground" />}
               <p className="mt-3 font-medium">
-                {searchError
+                {searchError || (showingDefaults && defaultProductsError)
                   ? "Pencarian produk belum berhasil"
                   : exactLookupFailed || searchMessage
                     ? "Produk tidak ditemukan"
-                    : looksLikeSkuOrBarcode(search)
-                      ? "SKU/barcode siap dipindai"
-                      : "Pindai atau cari produk"}
+                    : showingDefaults
+                      ? "Belum ada produk tersedia"
+                      : looksLikeSkuOrBarcode(search)
+                        ? "SKU/barcode siap dipindai"
+                        : search.trim().length < 3
+                          ? "Ketik minimal 3 karakter"
+                          : "Produk tidak ditemukan"}
               </p>
               <p className="mt-1 max-w-sm text-sm leading-5 text-muted-foreground">
-                {searchError || (exactLookupFailed
+                {searchError || (showingDefaults && defaultProductsError) || (exactLookupFailed
                   ? "Produk tidak ditemukan atau tidak tersedia."
                   : searchMessage || (looksLikeSkuOrBarcode(search)
                     ? "Tekan Enter untuk memindai SKU/barcode."
-                    : "Tekan Enter setelah memindai barcode/SKU, atau ketik nama produk untuk mencari."))}
+                    : showingDefaults
+                      ? defaultProductsError || "Produk yang tersedia akan muncul di sini."
+                      : looksLikeSkuOrBarcode(search)
+                        ? "Tekan Enter untuk memindai barcode/SKU."
+                        : search.trim().length < 3
+                          ? "Masukkan minimal 3 karakter nama produk untuk mencari."
+                          : "Tidak ada produk tersedia yang cocok dengan pencarian ini."))}
               </p>
             </div>
           )}

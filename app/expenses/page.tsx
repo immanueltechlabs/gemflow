@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
 import { CircleAlert, ReceiptText } from "lucide-react";
 
 import { ExpensesWorkbench } from "@/components/expenses-workbench";
@@ -59,6 +60,8 @@ export default async function ExpensesPage({
 }: {
   searchParams: Promise<ExpenseSearchParams>;
 }) {
+  noStore();
+
   const profile = await getCurrentProfile();
   const params = await searchParams;
   const filters: ExpenseFilters = {

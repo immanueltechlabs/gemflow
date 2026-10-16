@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 
 import { getCurrentProfile } from "@/lib/auth";
 import { productStatuses, type InventoryActionState, type ProductStatus } from "@/lib/inventory";
-import { productSelect } from "@/lib/inventory";
 import { createClient } from "@/lib/supabase/server";
 
 type ProductInput = {
@@ -176,21 +175,29 @@ export async function updateProduct(
     }
     input.barcode = currentProduct.sku;
   }
-  const { error } = await supabase
-    .from("products")
-    .update(input)
-    .eq("id", productId)
-    .select(productSelect)
-    .single();
+  const { error } = await supabase.rpc("update_product_with_audit", {
+    p_product_id: productId,
+    p_barcode: input.barcode,
+    p_name: input.name,
+    p_category: input.category,
+    p_grade: input.grade,
+    p_weight_grams: input.weight_grams,
+    p_supplier_name: input.supplier_name,
+    p_cost_price: input.cost_price,
+    p_selling_price: input.selling_price,
+    p_status: input.status,
+    p_received_at: input.received_at,
+  });
 
   if (error) {
     return {
       status: "error",
-      message: mutationError("Pembaruan produk", error, "products.update"),
+      message: mutationError("Pembaruan produk", error, "rpc(update_product_with_audit)"),
     };
   }
 
   revalidatePath("/inventory");
   revalidatePath(`/inventory/${productId}/label`);
+  revalidatePath(`/inventory/${productId}/audit`);
   return { status: "success", message: "Detail produk berhasil diperbarui." };
 }

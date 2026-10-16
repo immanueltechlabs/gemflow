@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Edit3,
   FilterX,
+  History,
   Plus,
   Printer,
   Search,
@@ -121,7 +122,12 @@ export function InventoryTable({
                   <td className="sticky right-0 bg-card px-4 py-3">
                     <div className="flex justify-end gap-1">
                       <Button asChild variant="ghost" size="icon" className="size-10" title="Cetak label barcode"><Link href={`/inventory/${product.id}/label`}><Printer aria-hidden="true" /><span className="sr-only">Cetak label untuk {product.name}</span></Link></Button>
-                      {role === "admin" ? <Button type="button" variant="ghost" size="icon" className="size-10" onClick={() => openEditor(product)} title="Edit produk"><Edit3 aria-hidden="true" /><span className="sr-only">Edit {product.name}</span></Button> : null}
+                      {role === "admin" ? (
+                        <>
+                          <Button asChild variant="ghost" size="icon" className="size-10" title="Riwayat perubahan" aria-label="Lihat riwayat perubahan"><Link href={`/inventory/${product.id}/audit`}><History aria-hidden="true" /></Link></Button>
+                          <Button type="button" variant="ghost" size="icon" className="size-10" onClick={() => openEditor(product)} title="Edit produk"><Edit3 aria-hidden="true" /><span className="sr-only">Edit {product.name}</span></Button>
+                        </>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
