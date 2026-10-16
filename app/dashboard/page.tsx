@@ -25,6 +25,8 @@ import { getJakartaDate, shiftDate } from "@/lib/report-dates";
 import { createClient } from "@/lib/supabase/server";
 import { formatRole } from "@/lib/utils";
 
+export const instant = false;
+
 type QuickAction = {
   title: string;
   description: string;

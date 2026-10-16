@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { unstable_noStore as noStore } from "next/cache";
 import { Boxes, ChartNoAxesCombined, Gem, ShieldCheck } from "lucide-react";
 
 import { GemFlowMark } from "@/components/gemflow-mark";
@@ -18,9 +19,11 @@ const capabilities = [
 ] as const;
 
 export default async function LoginPage() {
+  noStore();
+
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
-  if (data?.claims) redirect("/dashboard");
+  if (data?.claims?.sub) redirect("/dashboard");
 
   return (
     <main className="grid min-h-svh bg-background lg:grid-cols-[1.05fr_0.95fr]">
