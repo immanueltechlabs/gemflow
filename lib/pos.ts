@@ -11,6 +11,19 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
   other: "Lainnya",
 };
 
+export function getSaleTotalValidationError(subtotal: number, discountAmount: number): string | null {
+  if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+    return "Diskon harus berupa nilai yang valid.";
+  }
+  if (!Number.isFinite(subtotal) || subtotal < 0 || discountAmount > subtotal) {
+    return "Diskon tidak boleh melebihi subtotal.";
+  }
+  if (subtotal - discountAmount <= 0) {
+    return "Total transaksi harus lebih dari Rp0.";
+  }
+  return null;
+}
+
 export type PosProduct = {
   id: string;
   sku: string;
@@ -18,18 +31,37 @@ export type PosProduct = {
   name: string;
   category: string | null;
   selling_price: number | null;
+  image_path: string | null;
+  image_url?: string | null;
 };
 
-export type SaleReceipt = {
+export type PosActionState =
+  | {
+      status: "idle";
+      message: string;
+    }
+  | {
+      status: "error";
+      message: string;
+    }
+  | {
+      status: "success";
+      message: string;
+      saleId: string;
+      invoiceNumber: string;
+      total: number;
+      amountPaid: number;
+      change: number;
+      customerName: string | null;
+    };
+
+export type SaleSuccessDetails = {
+  saleId: string;
   invoiceNumber: string;
   total: number;
+  amountPaid: number;
   change: number;
-};
-
-export type PosActionState = {
-  status: "idle" | "success" | "error";
-  message: string;
-  receipt?: SaleReceipt;
+  customerName: string | null;
 };
 
 export const initialPosActionState: PosActionState = {

@@ -263,8 +263,8 @@ export function ExpensesWorkbench({
                   <span className="truncate text-xs text-muted-foreground lg:hidden">Dibuat oleh {expense.creator_label}</span>
                   {role === "admin" ? (
                     <div className="flex shrink-0 gap-1">
-                      <Button type="button" variant="ghost" size="icon" onClick={() => openEditor(expense)} aria-label={`Edit pengeluaran ${expense.description}`} title="Edit pengeluaran" className="size-10"><Pencil aria-hidden="true" /></Button>
-                      <Button type="button" variant="ghost" size="icon" onClick={() => handleDelete(expense)} disabled={deletePending && deletingId === expense.id} aria-label={`Hapus pengeluaran ${expense.description}`} title="Hapus pengeluaran" className="size-10 text-muted-foreground hover:text-destructive">
+                      <Button type="button" variant="ghost" size="icon" onClick={() => openEditor(expense)} aria-label={`Edit pengeluaran ${expense.description}`} title="Edit pengeluaran" className="size-11"><Pencil aria-hidden="true" /></Button>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => handleDelete(expense)} disabled={deletePending && deletingId === expense.id} aria-label={`Hapus pengeluaran ${expense.description}`} title="Hapus pengeluaran" className="size-11 text-muted-foreground hover:text-destructive">
                         {deletePending && deletingId === expense.id ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Trash2 aria-hidden="true" />}
                       </Button>
                     </div>
@@ -283,14 +283,14 @@ export function ExpensesWorkbench({
             <p className="mt-1 max-w-sm text-sm leading-5 text-muted-foreground">
               {filtersActive ? "Ubah filter atau rentang tanggal untuk melihat catatan lainnya." : "Tambahkan pengeluaran pertama untuk mulai mencatat biaya operasional."}
             </p>
-            {filtersActive ? <Button asChild type="button" variant="outline" className="mt-4 h-10"><Link href="/expenses">Hapus filter</Link></Button> : null}
+            {filtersActive ? <Button asChild type="button" variant="outline" className="mt-4 min-h-11"><Link href="/expenses">Hapus filter</Link></Button> : null}
           </div>
         )}
         <div className="flex flex-col justify-between gap-3 border-t px-4 py-4 text-sm sm:flex-row sm:items-center sm:px-5">
           <span className="text-muted-foreground">Halaman {pagination.page} dari {pagination.totalPages}</span>
           <div className="flex gap-2">
-            {pagination.previousHref ? <Button asChild type="button" variant="outline" className="h-10"><Link href={pagination.previousHref}>Sebelumnya</Link></Button> : <Button type="button" variant="outline" disabled className="h-10">Sebelumnya</Button>}
-            {pagination.nextHref ? <Button asChild type="button" variant="outline" className="h-10"><Link href={pagination.nextHref}>Berikutnya</Link></Button> : <Button type="button" variant="outline" disabled className="h-10">Berikutnya</Button>}
+            {pagination.previousHref ? <Button asChild type="button" variant="outline" className="min-h-11"><Link href={pagination.previousHref}>Sebelumnya</Link></Button> : <Button type="button" variant="outline" disabled className="min-h-11">Sebelumnya</Button>}
+            {pagination.nextHref ? <Button asChild type="button" variant="outline" className="min-h-11"><Link href={pagination.nextHref}>Berikutnya</Link></Button> : <Button type="button" variant="outline" disabled className="min-h-11">Berikutnya</Button>}
           </div>
         </div>
       </section>
@@ -303,7 +303,7 @@ export function ExpensesWorkbench({
                 <h2 className="text-xl font-semibold">{editing === "new" ? "Tambah pengeluaran" : "Edit pengeluaran"}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Catat tanggal, kategori, deskripsi, dan nominal biaya.</p>
               </div>
-              <button type="button" onClick={closeEditor} className="flex size-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Tutup formulir"><X aria-hidden="true" className="size-5" /></button>
+              <button type="button" onClick={closeEditor} className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Tutup formulir"><X aria-hidden="true" className="size-5" /></button>
             </div>
             <div className="p-5 sm:p-6"><ExpenseForm key={editing === "new" ? "new" : editing.id} expense={editing === "new" ? null : editing} onSaved={handleSaved} /></div>
           </div>

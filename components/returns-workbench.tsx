@@ -281,7 +281,7 @@ export function ReturnsWorkbench() {
                               type="button"
                               variant={activeItem ? "secondary" : "outline"}
                               onClick={() => chooseItem(item)}
-                              className="h-10 min-w-28"
+                              className="min-h-11 min-w-28"
                             >
                               {activeItem ? <><CircleCheck aria-hidden="true" />Dipilih</> : <><Undo2 aria-hidden="true" />Pilih retur</>}
                             </Button>

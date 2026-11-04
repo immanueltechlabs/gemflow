@@ -98,12 +98,57 @@
     margin: 0;
   }
 
+  @page invoice {
+    size: A4;
+    margin: 16mm;
+  }
+
   body:has(.barcode-label-page) {
     background: white;
   }
 
+  body:has(.sales-document-invoice) {
+    background: white !important;
+    color: #0f172a !important;
+  }
+
   .no-print {
     display: none !important;
+  }
+
+  .sales-document-page {
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    color: #0f172a !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .sales-document-invoice {
+    page: invoice;
+    width: auto;
+  }
+
+  .sales-document-card {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .sales-document-invoice .sales-document-header {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .sales-document-items,
+  .sales-document-totals,
+  .sales-document-notes,
+  .sales-document-footer {
+    break-inside: avoid;
   }
 
   .barcode-label-page {

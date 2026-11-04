@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   ReceiptText,
   RotateCcw,
+  ScanBarcode,
   ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { label: "Dasbor", href: "/dashboard", icon: LayoutDashboard },
   { label: "Inventaris", href: "/inventory", icon: Boxes },
   { label: "Kasir", href: "/pos", icon: ShoppingBag },
+  { label: "Stock Opname", href: "/stock-opname", icon: ScanBarcode },
   { label: "Pergerakan Stok", href: "/stock-movements", icon: ArrowLeftRight },
   { label: "Retur", href: "/returns", icon: RotateCcw },
   { label: "Pengeluaran", href: "/expenses", icon: ReceiptText },

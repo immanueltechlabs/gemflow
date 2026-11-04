@@ -48,7 +48,7 @@ export function WorkspaceShell({
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-5 backdrop-blur sm:px-8 lg:h-20">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background px-5 sm:px-8 lg:h-20 lg:bg-background/95 lg:backdrop-blur">
           <div className="flex items-center gap-3 lg:hidden">
             <GemFlowMark className="size-8" />
             <span className="font-semibold tracking-[-0.02em]">GemFlow</span>

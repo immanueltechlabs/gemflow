@@ -203,14 +203,14 @@ export function StockMovementsWorkbench({
             <p className="mt-1 max-w-sm text-sm leading-5 text-muted-foreground">
               {filtersActive ? "Ubah filter atau rentang tanggal untuk melihat catatan lainnya." : "Pergerakan akan tercatat saat stok masuk, penjualan, atau retur menambah stok."}
             </p>
-            {filtersActive ? <Button asChild variant="outline" className="mt-4 h-10"><Link href="/stock-movements">Hapus filter</Link></Button> : null}
+            {filtersActive ? <Button asChild variant="outline" className="mt-4 min-h-11"><Link href="/stock-movements">Hapus filter</Link></Button> : null}
           </div>
         )}
         <div className="flex flex-col justify-between gap-3 border-t px-4 py-4 text-sm sm:flex-row sm:items-center sm:px-5">
           <span className="text-muted-foreground">Halaman {pagination.page} dari {pagination.totalPages}</span>
           <div className="flex gap-2">
-            {pagination.previousHref ? <Button asChild type="button" variant="outline" className="h-10"><Link href={pagination.previousHref}>Sebelumnya</Link></Button> : <Button type="button" variant="outline" disabled className="h-10">Sebelumnya</Button>}
-            {pagination.nextHref ? <Button asChild type="button" variant="outline" className="h-10"><Link href={pagination.nextHref}>Berikutnya</Link></Button> : <Button type="button" variant="outline" disabled className="h-10">Berikutnya</Button>}
+            {pagination.previousHref ? <Button asChild type="button" variant="outline" className="min-h-11"><Link href={pagination.previousHref}>Sebelumnya</Link></Button> : <Button type="button" variant="outline" disabled className="min-h-11">Sebelumnya</Button>}
+            {pagination.nextHref ? <Button asChild type="button" variant="outline" className="min-h-11"><Link href={pagination.nextHref}>Berikutnya</Link></Button> : <Button type="button" variant="outline" disabled className="min-h-11">Berikutnya</Button>}
           </div>
         </div>
       </section>

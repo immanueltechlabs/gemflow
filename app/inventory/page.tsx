@@ -12,18 +12,21 @@ import {
   type InventoryPagination,
 } from "@/lib/inventory";
 import { createClient } from "@/lib/supabase/server";
+import { signProductImages } from "@/lib/product-images";
 
 export const metadata: Metadata = { title: "Inventaris | GemFlow" };
 export const instant = false;
 
 const pageSize = 25;
-const cashierProductSelect = "id, sku, barcode, name, category, grade, weight_grams, supplier_name, selling_price, status, received_at";
+const cashierProductSelect = "id, sku, barcode, name, category, grade, weight_grams, supplier_name, selling_price, status, received_at, image_path";
 
 type InventorySearchParams = {
   q?: string | string[];
   category?: string | string[];
   supplier?: string | string[];
   status?: string | string[];
+  showSold?: string | string[];
+  includeSold?: string | string[];
   page?: string | string[];
 };
 
@@ -38,12 +41,17 @@ function safeSearchValue(value: string) {
     .replace(/\s+/g, "%");
 }
 
+function exactIlikeValue(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
 function buildPageHref(filters: InventoryFilters, page: number) {
   const params = new URLSearchParams();
   if (filters.q) params.set("q", filters.q);
   if (filters.category) params.set("category", filters.category);
   if (filters.supplier) params.set("supplier", filters.supplier);
   if (filters.status) params.set("status", filters.status);
+  if (filters.showSold) params.set("showSold", "1");
   params.set("page", String(page));
   return `/inventory?${params.toString()}`;
 }
@@ -59,9 +67,10 @@ async function loadProducts(role: "admin" | "cashier", filters: InventoryFilters
     const pattern = `%${search}%`;
     query = query.or(`sku.ilike.${pattern},barcode.ilike.${pattern},name.ilike.${pattern}`);
   }
-  if (filters.category) query = query.eq("category", filters.category);
-  if (filters.supplier) query = query.eq("supplier_name", filters.supplier);
+  if (filters.category) query = query.ilike("category", exactIlikeValue(filters.category));
+  if (filters.supplier) query = query.ilike("supplier_name", exactIlikeValue(filters.supplier));
   if (filters.status) query = query.eq("status", filters.status);
+  else if (!filters.showSold) query = query.neq("status", "sold");
 
   const from = (page - 1) * pageSize;
   return query
@@ -82,6 +91,7 @@ export default async function InventoryPage({
     category: firstParam(params.category).trim().slice(0, 120),
     supplier: firstParam(params.supplier).trim().slice(0, 120),
     status: productStatuses.find((status) => status === requestedStatus) ?? "",
+    showSold: firstParam(params.showSold) === "1" || firstParam(params.includeSold) === "1",
   };
   const requestedPage = Number(firstParam(params.page));
   let page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, 100_000) : 1;
@@ -92,7 +102,18 @@ export default async function InventoryPage({
     page = totalPages;
     productResult = await loadProducts(profile.role, filters, page);
   }
-  const products = (productResult.data ?? []) as unknown as InventoryListingProduct[];
+  const rows = (productResult.data ?? []) as unknown as InventoryListingProduct[];
+  const imageResult = await signProductImages(rows);
+  if (imageResult.error && process.env.NODE_ENV === "development") {
+    console.error("[GemFlow Inventaris] storage.product_images.sign_urls", {
+      code: imageResult.error.code ?? "unknown",
+      message: imageResult.error.message,
+    });
+  }
+  const products = rows.map((product) => ({
+    ...product,
+    image_url: product.image_path ? imageResult.urls.get(product.image_path) ?? null : null,
+  }));
   const pagination: InventoryPagination = {
     page,
     pageSize,
@@ -131,7 +152,13 @@ export default async function InventoryPage({
           </p>
         </div>
       ) : (
-        <InventoryTable products={products} role={profile.role} filters={filters} pagination={pagination} />
+        <InventoryTable
+          products={products}
+          role={profile.role}
+          filters={filters}
+          pagination={pagination}
+          imageError={imageResult.error ? "Foto produk tidak dapat dimuat. Periksa bucket dan kebijakan Storage." : ""}
+        />
       )}
     </WorkspaceShell>
   );

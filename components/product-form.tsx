@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { AlertCircle, LoaderCircle } from "lucide-react";
 
 import { createProduct, updateProduct } from "@/app/inventory/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ProductPhoto } from "@/components/product-photo";
 import {
   initialInventoryActionState,
   productStatuses,
@@ -34,6 +35,7 @@ export function ProductForm({
 }) {
   const action = product ? updateProduct : createProduct;
   const [state, formAction, pending] = useActionState(action, initialInventoryActionState);
+  const [removeImage, setRemoveImage] = useState(false);
 
   useEffect(() => {
     if (state.status === "success") onSuccess(state.message);
@@ -60,7 +62,7 @@ export function ProductForm({
 
         <div className="space-y-2">
           <Label htmlFor="product-weight">Berat (gram)</Label>
-          <Input id="product-weight" name="weight_grams" type="number" min="0.001" step="0.001" defaultValue={product?.weight_grams ?? ""} required placeholder="32.500" className={fieldClass} />
+          <Input id="product-weight" name="weight_grams" type="number" inputMode="decimal" min="0.001" step="0.001" defaultValue={product?.weight_grams ?? ""} required placeholder="32.500" className={fieldClass} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="product-supplier">Pemasok</Label>
@@ -69,11 +71,11 @@ export function ProductForm({
 
         <div className="space-y-2">
           <Label htmlFor="product-cost">Harga modal (IDR)</Label>
-          <Input id="product-cost" name="cost_price" type="number" min="0" step="1" defaultValue={product?.cost_price ?? ""} required placeholder="2500000" className={fieldClass} />
+          <Input id="product-cost" name="cost_price" type="number" inputMode="numeric" min="0" step="1" defaultValue={product?.cost_price ?? ""} required placeholder="2500000" className={fieldClass} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="product-selling">Harga jual (IDR)</Label>
-          <Input id="product-selling" name="selling_price" type="number" min="0" step="1" defaultValue={product?.selling_price ?? ""} required placeholder="3750000" className={fieldClass} />
+          <Input id="product-selling" name="selling_price" type="number" inputMode="numeric" min="0" step="1" defaultValue={product?.selling_price ?? ""} required placeholder="3750000" className={fieldClass} />
         </div>
 
         <div className="space-y-2">
@@ -109,6 +111,47 @@ export function ProductForm({
               Barcode akan menggunakan SKU yang dibuat secara otomatis.
             </p>
           )}
+        </div>
+
+        <div className="space-y-3 sm:col-span-2">
+          <Label htmlFor="product-image">Foto utama (opsional)</Label>
+          <div className="flex flex-col gap-4 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center">
+            <ProductPhoto
+              src={removeImage ? null : product?.image_url}
+              alt={product ? `Foto ${product.name}` : "Pratinjau foto produk"}
+              className="size-28"
+            />
+            <div className="min-w-0 flex-1 space-y-2">
+              <input
+                id="product-image"
+                name="image_file"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                disabled={removeImage}
+                onChange={(event) => {
+                  if (event.currentTarget.files?.length) setRemoveImage(false);
+                }}
+                className="block min-h-11 w-full text-sm file:mr-3 file:min-h-11 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:font-medium file:text-secondary-foreground hover:file:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              />
+              <p className="text-xs leading-5 text-muted-foreground">
+                JPG, PNG, atau WebP. Maksimal 5 MB.
+                {product?.image_path && !removeImage ? " Unggah foto baru untuk mengganti foto saat ini." : ""}
+              </p>
+              {product?.image_path ? (
+                <label className="flex min-h-11 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="remove_image"
+                    value="true"
+                    checked={removeImage}
+                    onChange={(event) => setRemoveImage(event.currentTarget.checked)}
+                    className="size-4 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  Hapus foto saat ini
+                </label>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
 

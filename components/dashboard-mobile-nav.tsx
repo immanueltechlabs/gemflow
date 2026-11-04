@@ -21,7 +21,7 @@ export function DashboardMobileNav({ fullName, role }: { fullName: string; role:
         <X aria-hidden="true" className="hidden size-5 group-open:block" />
         <span className="sr-only">Buka atau tutup navigasi</span>
       </summary>
-      <div className="fixed inset-x-0 bottom-0 top-16 z-50 overflow-y-auto border-t bg-background p-5">
+      <div className="fixed inset-x-0 bottom-0 top-16 z-50 overflow-y-auto border-t bg-background p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
         <div className="mb-6 flex items-center gap-3 border-b pb-5">
           <GemFlowMark />
           <div className="min-w-0 flex-1">

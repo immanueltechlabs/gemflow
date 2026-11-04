@@ -15,8 +15,10 @@ import {
 } from "lucide-react";
 
 import { checkoutSale, findAvailableProduct, searchAvailableProducts } from "@/app/pos/actions";
+import { ProductPhotoLightbox } from "@/components/product-photo-lightbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
 import { formatRupiah } from "@/lib/inventory";
 import {
   initialPosActionState,
@@ -24,7 +26,7 @@ import {
   paymentMethods,
   type PaymentMethod,
   type PosProduct,
-  type SaleReceipt,
+  type SaleSuccessDetails,
 } from "@/lib/pos";
 
 function looksLikeSkuOrBarcode(value: string) {
@@ -48,6 +50,7 @@ export function PosTerminal({
   const [searchResults, setSearchResults] = useState<PosProduct[]>([]);
   const [searchPending, setSearchPending] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [imageError, setImageError] = useState("");
   const [searchMessage, setSearchMessage] = useState("");
   const [exactLookupFailed, setExactLookupFailed] = useState(false);
   const [cart, setCart] = useState<PosProduct[]>([]);
@@ -57,7 +60,9 @@ export function PosTerminal({
   const [customerName, setCustomerName] = useState("");
   const [notes, setNotes] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
+  const [successDetailsState, setSuccessDetailsState] = useState<SaleSuccessDetails | null>(null);
+  const [dismissActionSuccess, setDismissActionSuccess] = useState(false);
+  const [dismissActionError, setDismissActionError] = useState(false);
 
   const subtotal = cart.reduce((sum, product) => sum + Number(product.selling_price ?? 0), 0);
   const discountAmount = Number(discountInput) || 0;
@@ -66,8 +71,12 @@ export function PosTerminal({
   const change = Math.max(0, amountPaid - total);
   const discountInvalid = discountAmount < 0 || discountAmount > subtotal;
   const cashInsufficient = paymentMethod === "cash" && amountPaid < total;
+  const checkoutDisabled = pending || cart.length === 0 || total <= 0 || discountInvalid || cashInsufficient;
   const showingDefaults = search.trim().length === 0;
   const visibleProducts = showingDefaults ? defaultProducts : searchResults;
+  const successDetails = successDetailsState ?? (
+    !dismissActionSuccess && actionState.status === "success" ? actionState : null
+  );
 
   useEffect(() => {
     const query = search.trim();
@@ -75,6 +84,7 @@ export function PosTerminal({
       setSearchResults([]);
       setSearchPending(false);
       setSearchError("");
+      setImageError("");
       setSearchMessage("");
       return;
     }
@@ -83,6 +93,7 @@ export function PosTerminal({
       setSearchResults([]);
       setSearchPending(false);
       setSearchError("");
+      setImageError("");
       setSearchMessage("");
       return;
     }
@@ -95,6 +106,7 @@ export function PosTerminal({
           if (searchSequenceRef.current !== requestSequence) return;
           setSearchResults(result.products);
           setSearchError(result.error ?? "");
+          setImageError(result.imageError ?? "");
           setSearchMessage(result.error || result.products.length ? "" : "Produk tidak ditemukan atau tidak tersedia.");
           setSearchPending(false);
         })
@@ -102,6 +114,7 @@ export function PosTerminal({
           if (searchSequenceRef.current !== requestSequence) return;
           setSearchResults([]);
           setSearchError("Pencarian produk gagal. Coba lagi atau hubungi Admin.");
+          setImageError("");
           setSearchMessage("");
           setSearchPending(false);
         });
@@ -114,9 +127,17 @@ export function PosTerminal({
   }, [search]);
 
   useEffect(() => {
-    if (actionState.status !== "success" || !actionState.receipt) return;
+    if (actionState.status !== "success") return;
 
-    setReceipt(actionState.receipt);
+    setSuccessDetailsState({
+      saleId: actionState.saleId,
+      invoiceNumber: actionState.invoiceNumber,
+      total: actionState.total,
+      amountPaid: actionState.amountPaid,
+      change: actionState.change,
+      customerName: actionState.customerName,
+    });
+    setDismissActionSuccess(false);
     cartProductIdsRef.current.clear();
     setCart([]);
     setDiscountInput("0");
@@ -126,12 +147,32 @@ export function PosTerminal({
     setSearch("");
     setSearchResults([]);
     setSearchError("");
+    setImageError("");
     setSearchMessage("");
     setExactLookupFailed(false);
     setFeedback("");
+  }, [actionState]);
+
+  const startNewTransaction = () => {
+    setSuccessDetailsState(null);
+    setDismissActionSuccess(true);
     router.refresh();
-    barcodeInputRef.current?.focus();
-  }, [actionState, router]);
+    requestAnimationFrame(() => barcodeInputRef.current?.focus());
+  };
+
+  const cancelTransaction = () => {
+    if (!window.confirm("Batalkan transaksi ini?")) return;
+
+    cartProductIdsRef.current.clear();
+    setCart([]);
+    setDiscountInput("0");
+    setPaymentMethod("cash");
+    setAmountPaidInput("");
+    setCustomerName("");
+    setNotes("");
+    setFeedback("");
+    setDismissActionError(true);
+  };
 
   const addProduct = (product: PosProduct) => {
     if (cartProductIdsRef.current.has(product.id)) {
@@ -153,6 +194,7 @@ export function PosTerminal({
     setSearchPending(true);
     setSearchResults([]);
     setSearchError("");
+    setImageError("");
     setSearchMessage("");
     setFeedback("");
     void findAvailableProduct(scannedValue)
@@ -168,6 +210,7 @@ export function PosTerminal({
           return;
         }
         addProduct(result.product);
+        setImageError(result.imageError ?? "");
         setExactLookupFailed(false);
         setSearch("");
       })
@@ -177,6 +220,42 @@ export function PosTerminal({
         setSearchError("Produk tidak dapat dicari. Coba lagi atau hubungi Admin.");
       });
   };
+
+  if (successDetails) {
+    return (
+      <div className="mx-auto flex min-h-[60svh] max-w-2xl items-center justify-center py-8">
+        <section aria-labelledby="checkout-success-heading" className="w-full rounded-2xl border border-primary/25 bg-card p-5 shadow-lg sm:p-8">
+          <div className="flex items-start gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <CircleCheck aria-hidden="true" className="size-6" />
+            </div>
+            <div>
+              <h2 id="checkout-success-heading" className="text-xl font-semibold tracking-tight">Penjualan berhasil</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Invoice {successDetails.invoiceNumber}</p>
+            </div>
+          </div>
+
+          <dl className="mt-6 space-y-3 rounded-xl bg-muted/40 p-4 text-sm">
+            <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Total</dt><dd className="font-semibold tabular-nums">{formatRupiah(successDetails.total)}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Uang diterima</dt><dd className="font-medium tabular-nums">{formatRupiah(successDetails.amountPaid)}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Kembalian</dt><dd className="font-medium tabular-nums">{formatRupiah(successDetails.change)}</dd></div>
+            {successDetails.customerName ? (
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Pelanggan</dt><dd className="max-w-[65%] text-right font-medium">{successDetails.customerName}</dd></div>
+            ) : null}
+          </dl>
+
+          <div className="no-print mt-6 grid gap-3 sm:grid-cols-2">
+            <Button asChild className="h-11 w-full">
+              <Link href={`/sales/${successDetails.saleId}/invoice`} target="_blank" rel="noopener noreferrer">Cetak Invoice</Link>
+            </Button>
+            <Button type="button" variant="secondary" className="h-11 w-full" onClick={startNewTransaction}>
+              Transaksi Baru
+            </Button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(370px,0.9fr)]">
@@ -197,6 +276,7 @@ export function PosTerminal({
                 setSearch(event.target.value);
                 setSearchResults([]);
                 setSearchError("");
+                setImageError("");
                 setSearchMessage("");
                 setExactLookupFailed(false);
                 setFeedback("");
@@ -214,7 +294,7 @@ export function PosTerminal({
           <span role="status" aria-live="polite" className="min-w-0 truncate text-muted-foreground">
             {feedback || (searchPending
               ? "Mencari produk..."
-              : searchError || (exactLookupFailed
+              : searchError || imageError || (exactLookupFailed
                 ? "Produk tidak ditemukan atau tidak tersedia."
                 : looksLikeSkuOrBarcode(search)
                   ? "Tekan Enter untuk memindai SKU/barcode."
@@ -239,14 +319,17 @@ export function PosTerminal({
               {visibleProducts.map((product) => {
                 const alreadyAdded = cart.some((item) => item.id === product.id);
                 return (
-                  <li key={product.id} className="flex min-h-[84px] items-center gap-3 py-3">
-                    <div className="min-w-0 flex-1">
+                  <li key={product.id} className="grid min-h-[84px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-3 sm:flex sm:gap-3">
+                    <div className="row-span-2 sm:row-auto">
+                      <ProductPhotoLightbox productId={product.id} productName={product.name} sku={product.sku} imagePath={product.image_path} thumbnailSrc={product.image_url} className="size-14" />
+                    </div>
+                    <div className="min-w-0 sm:flex-1">
                       <p className="truncate text-sm font-semibold">{product.name}</p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                      <p className="mt-1 break-words text-xs text-muted-foreground">
                         {product.sku}{product.category ? ` · ${product.category}` : ""}
                       </p>
                     </div>
-                    <p className="shrink-0 text-right text-sm font-semibold tabular-nums">
+                    <p className="col-start-2 text-sm font-semibold tabular-nums sm:ml-auto sm:shrink-0 sm:text-right">
                       {formatRupiah(product.selling_price)}
                     </p>
                     <Button
@@ -256,7 +339,7 @@ export function PosTerminal({
                       onClick={() => addProduct(product)}
                       aria-label={alreadyAdded ? `${product.name} sudah di keranjang` : `Tambahkan ${product.name}`}
                       title={alreadyAdded ? "Sudah di keranjang" : "Tambahkan ke keranjang"}
-                      className="h-11 shrink-0 gap-1.5 px-3"
+                      className="col-start-3 row-span-2 h-11 shrink-0 gap-1.5 px-3 sm:row-auto"
                     >
                       {alreadyAdded ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}
                       {alreadyAdded ? "Di keranjang" : "Tambah"}
@@ -310,7 +393,10 @@ export function PosTerminal({
           <ShoppingCart aria-hidden="true" className="size-5 text-primary" />
         </div>
 
-        <form action={formAction}>
+        <form
+          action={formAction}
+          onSubmit={() => setDismissActionError(false)}
+        >
           <input type="hidden" name="product_ids" value={JSON.stringify(cart.map((product) => product.id))} />
           <input type="hidden" name="discount_amount" value={discountAmount} />
           <input type="hidden" name="amount_paid" value={paymentMethod === "cash" ? amountPaidInput : total} />
@@ -320,6 +406,7 @@ export function PosTerminal({
               <ul className="divide-y">
                 {cart.map((product) => (
                   <li key={product.id} className="flex min-h-[76px] items-center gap-3 py-3">
+                    <ProductPhotoLightbox productId={product.id} productName={product.name} sku={product.sku} imagePath={product.image_path} thumbnailSrc={product.image_url} className="size-12" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{product.name}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{product.sku}</p>
@@ -367,7 +454,7 @@ export function PosTerminal({
                 value={discountInput}
                 onChange={(event) => setDiscountInput(event.target.value)}
                 aria-invalid={discountInvalid}
-                className="h-10 w-36 text-right tabular-nums"
+                className="h-11 w-36 text-right tabular-nums"
               />
             </div>
             {discountInvalid ? <p className="text-right text-xs text-destructive">Diskon tidak boleh melebihi subtotal.</p> : null}
@@ -442,39 +529,45 @@ export function PosTerminal({
               </div>
             </div>
 
-            {actionState.status === "error" ? (
+            {actionState.status === "error" && !dismissActionError ? (
               <div role="alert" className="flex gap-2.5 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
                 <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
                 <p>{actionState.message}</p>
               </div>
             ) : null}
 
-            <Button
-              type="submit"
-              disabled={pending || cart.length === 0 || discountInvalid || cashInsufficient}
-              className="h-12 w-full text-base"
-            >
-              {pending ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Memproses transaksi</> : <><Check aria-hidden="true" />Selesaikan penjualan</>}
-            </Button>
+            {cart.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={cancelTransaction}
+                  className="h-12 w-full"
+                >
+                  Batalkan transaksi
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={checkoutDisabled}
+                  className="h-12 w-full text-base"
+                >
+                  {pending ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Memproses transaksi</> : <><Check aria-hidden="true" />Selesaikan penjualan</>}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="submit"
+                disabled={checkoutDisabled}
+                className="h-12 w-full text-base"
+              >
+                {pending ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Memproses transaksi</> : <><Check aria-hidden="true" />Selesaikan penjualan</>}
+              </Button>
+            )}
           </div>
         </form>
       </section>
 
-      {receipt ? (
-        <section aria-labelledby="receipt-heading" className="flex gap-3 rounded-xl border border-primary/25 bg-primary/[0.045] p-4 sm:p-5 xl:col-start-2">
-          <CircleCheck aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1">
-            <h2 id="receipt-heading" className="font-semibold">Transaksi berhasil</h2>
-            <p className="mt-1 truncate text-sm text-muted-foreground">Invoice {receipt.invoiceNumber}</p>
-            <div className="mt-3 flex justify-between gap-4 text-sm">
-              <span>Total</span><span className="font-semibold tabular-nums">{formatRupiah(receipt.total)}</span>
-            </div>
-            <div className="mt-1 flex justify-between gap-4 text-sm">
-              <span>Kembalian</span><span className="font-medium tabular-nums">{formatRupiah(receipt.change)}</span>
-            </div>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

@@ -23,6 +23,8 @@ export type Product = {
   selling_price: number | null;
   status: ProductStatus;
   received_at: string | null;
+  image_path: string | null;
+  image_url?: string | null;
 };
 
 export type InventoryListingProduct = Omit<Product, "cost_price"> & {
@@ -34,6 +36,7 @@ export type InventoryFilters = {
   category: string;
   supplier: string;
   status: string;
+  showSold: boolean;
 };
 
 export type InventoryPagination = {
@@ -56,7 +59,7 @@ export const initialInventoryActionState: InventoryActionState = {
 };
 
 export const productSelect =
-  "id, sku, barcode, name, category, grade, weight_grams, supplier_name, cost_price, selling_price, status, received_at";
+  "id, sku, barcode, name, category, grade, weight_grams, supplier_name, cost_price, selling_price, status, received_at, image_path";
 
 export function formatRupiah(value: number | null) {
   return new Intl.NumberFormat("id-ID", {

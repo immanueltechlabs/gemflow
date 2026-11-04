@@ -263,7 +263,7 @@ export async function createReturn(
   if (item.returnStatus !== "not_returned") {
     return { status: "error", message: "Barang ini sudah pernah diretur dan tidak dapat diproses kembali." };
   }
-  if (item.refundableAmount > 0 && refundAmount > item.refundableAmount) {
+  if (refundAmount > item.refundableAmount) {
     return { status: "error", message: "Jumlah pengembalian dana melebihi nilai barang." };
   }
 

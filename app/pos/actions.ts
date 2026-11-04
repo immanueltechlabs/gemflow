@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 
 import { getCurrentProfile } from "@/lib/auth";
-import { paymentMethods, type PosActionState, type PosProduct, type SaleReceipt } from "@/lib/pos";
+import {
+  getSaleTotalValidationError,
+  paymentMethods,
+  type PosActionState,
+  type PosProduct,
+  type SaleSuccessDetails,
+} from "@/lib/pos";
+import { signProductImages } from "@/lib/product-images";
 import { createClient } from "@/lib/supabase/server";
 
 type SupabaseError = {
@@ -30,25 +37,60 @@ function logSupabaseError(statement: string, error: SupabaseError) {
   );
 }
 
-function readReceiptValues(data: unknown) {
-  let result: unknown = Array.isArray(data) ? data[0] : data;
-  if (typeof result === "string") {
-    try {
-      result = JSON.parse(result);
-    } catch {
-      return { invoiceNumber: String(result), total: undefined, change: undefined };
+function readSaleResult(data: unknown): {
+  saleId: string | null;
+  invoiceNumber: string | undefined;
+  total: number | undefined;
+  amountPaid: number | undefined;
+  change: number | undefined;
+  customerName: string | null | undefined;
+} {
+  let result: unknown = data;
+  for (let depth = 0; depth < 5; depth += 1) {
+    if (Array.isArray(result)) {
+      result = result[0];
+      continue;
     }
+    if (typeof result === "string") {
+      const rawResult = result;
+      try {
+        result = JSON.parse(rawResult);
+        continue;
+      } catch {
+        const isId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawResult);
+        return {
+          saleId: isId ? rawResult : null,
+          invoiceNumber: isId ? undefined : rawResult,
+          total: undefined,
+          amountPaid: undefined,
+          change: undefined,
+          customerName: undefined,
+        };
+      }
+    }
+    if (!result || typeof result !== "object") break;
+
+    const wrapped = result as Record<string, unknown>;
+    const nested = ["sale", "sales", "create_sale", "result", "data"]
+      .map((key) => wrapped[key])
+      .find((value) => value != null);
+    if (nested === undefined) break;
+    result = nested;
   }
 
   if (!result || typeof result !== "object") {
-    return { invoiceNumber: undefined, total: undefined, change: undefined };
+    return {
+      saleId: null,
+      invoiceNumber: undefined,
+      total: undefined,
+      amountPaid: undefined,
+      change: undefined,
+      customerName: undefined,
+    };
   }
 
   const record = result as Record<string, unknown>;
-  const nested = record.receipt ?? record.sale ?? record.create_sale;
-  const values = nested && typeof nested === "object"
-    ? { ...record, ...(nested as Record<string, unknown>) }
-    : record;
+  const values = record;
   const findValue = (keys: string[]) => keys.map((key) => values[key]).find((value) => value != null);
   const numberValue = (keys: string[]) => {
     const value = findValue(keys);
@@ -61,25 +103,43 @@ function readReceiptValues(data: unknown) {
     "invoice_no",
     "invoice",
     "sale_number",
-    "receipt_number",
-    "receipt_no",
     "transaction_number",
   ]);
+  const saleIdValue = findValue(["sale_id", "transaction_id", "id"]);
+  const customerValue = findValue(["customer_name", "customer"]);
 
   return {
+    saleId: typeof saleIdValue === "string" ? saleIdValue : null,
     invoiceNumber: typeof invoiceValue === "string" || typeof invoiceValue === "number"
       ? String(invoiceValue)
       : undefined,
     total: numberValue(["total", "total_amount", "grand_total", "final_total", "amount_total"]),
+    amountPaid: numberValue(["amount_paid", "paid_amount"]),
     change: numberValue(["change", "change_amount", "change_due", "cash_change"]),
+    customerName: typeof customerValue === "string" ? customerValue : null,
   };
 }
 
-const posProductSelect = "id, sku, barcode, name, category, selling_price";
+const posProductSelect = "id, sku, barcode, name, category, selling_price, image_path";
+
+async function withProductImage(product: PosProduct) {
+  const imageResult = await signProductImages([product]);
+  if (imageResult.error) {
+    logSupabaseError("storage.product_image.sign_url", imageResult.error);
+  }
+  return {
+    product: {
+      ...product,
+      image_url: product.image_path ? imageResult.urls.get(product.image_path) ?? null : null,
+    },
+    imageError: imageResult.error ? "Foto produk tidak dapat dimuat." : undefined,
+  };
+}
 
 export async function findAvailableProduct(identifier: string): Promise<{
   product: PosProduct | null;
   error?: string;
+  imageError?: string;
 }> {
   const profile = await getCurrentProfile();
   if (profile.role !== "admin" && profile.role !== "cashier") {
@@ -101,7 +161,7 @@ export async function findAvailableProduct(identifier: string): Promise<{
     logSupabaseError("products.exact_barcode_lookup", barcodeResult.error);
     return { product: null, error: "Produk tidak dapat dicari. Coba lagi atau hubungi Admin." };
   }
-  if (barcodeResult.data) return { product: barcodeResult.data as PosProduct };
+  if (barcodeResult.data) return withProductImage(barcodeResult.data as PosProduct);
 
   const skuResult = await supabase
     .from("products")
@@ -115,12 +175,13 @@ export async function findAvailableProduct(identifier: string): Promise<{
     return { product: null, error: "Produk tidak dapat dicari. Coba lagi atau hubungi Admin." };
   }
 
-  return { product: (skuResult.data as PosProduct | null) ?? null };
+  return skuResult.data ? withProductImage(skuResult.data as PosProduct) : { product: null };
 }
 
 export async function searchAvailableProducts(query: string): Promise<{
   products: PosProduct[];
   error?: string;
+  imageError?: string;
 }> {
   const profile = await getCurrentProfile();
   if (profile.role !== "admin" && profile.role !== "cashier") {
@@ -145,7 +206,16 @@ export async function searchAvailableProducts(query: string): Promise<{
     return { products: [], error: "Pencarian produk gagal. Coba lagi atau hubungi Admin." };
   }
 
-  return { products: (data ?? []) as PosProduct[] };
+  const products = (data ?? []) as PosProduct[];
+  const imageResult = await signProductImages(products);
+  if (imageResult.error) logSupabaseError("storage.product_images.sign_urls", imageResult.error);
+  return {
+    products: products.map((product) => ({
+      ...product,
+      image_url: product.image_path ? imageResult.urls.get(product.image_path) ?? null : null,
+    })),
+    ...(imageResult.error ? { imageError: "Foto produk tidak dapat dimuat." } : {}),
+  };
 }
 
 export async function checkoutSale(
@@ -205,8 +275,9 @@ export async function checkoutSale(
     (sum, product) => sum + Number(product.selling_price ?? 0),
     0,
   );
-  if (!Number.isFinite(subtotal) || subtotal < 0 || discountAmount > subtotal) {
-    return { status: "error", message: "Diskon tidak boleh melebihi subtotal." };
+  const totalValidationError = getSaleTotalValidationError(subtotal, discountAmount);
+  if (totalValidationError) {
+    return { status: "error", message: totalValidationError };
   }
 
   const total = subtotal - discountAmount;
@@ -229,18 +300,64 @@ export async function checkoutSale(
     return { status: "error", message: "Transaksi gagal. Periksa data pembayaran lalu coba lagi." };
   }
 
-  const result = readReceiptValues(data);
-  const receipt: SaleReceipt = {
-    invoiceNumber: result.invoiceNumber ?? "Tidak dikembalikan RPC",
+  const result = readSaleResult(data);
+  let saleId = result.saleId;
+  if (saleId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(saleId)) {
+    saleId = null;
+  }
+  let invoiceNumber = result.invoiceNumber;
+  if (!saleId || !invoiceNumber) {
+    if (saleId) {
+      const { data: sale, error: saleLookupError } = await supabase
+        .from("sales")
+        .select("id, invoice_number")
+        .eq("id", saleId)
+        .maybeSingle();
+      if (saleLookupError) {
+        logSupabaseError("sales.lookup_created_sale", saleLookupError);
+        return { status: "error", message: "Transaksi tersimpan, tetapi detail invoice tidak dapat dimuat." };
+      }
+      saleId ??= sale?.id ?? null;
+      invoiceNumber ??= sale?.invoice_number ?? undefined;
+    } else if (invoiceNumber) {
+      const { data: sale, error: saleLookupError } = await supabase
+        .from("sales")
+        .select("id, invoice_number")
+        .eq("invoice_number", invoiceNumber)
+        .maybeSingle();
+      if (saleLookupError) {
+        logSupabaseError("sales.lookup_created_sale", saleLookupError);
+        return { status: "error", message: "Transaksi tersimpan, tetapi detail invoice tidak dapat dimuat." };
+      }
+      saleId = sale?.id ?? null;
+      invoiceNumber ??= sale?.invoice_number ?? undefined;
+    }
+  }
+  if (!saleId || !invoiceNumber) {
+    console.error("[GemFlow POS] Successful checkout returned incomplete identifiers", JSON.stringify({
+      saleIdPresent: Boolean(saleId),
+      invoiceNumberPresent: Boolean(invoiceNumber),
+    }));
+    return { status: "error", message: "Transaksi tersimpan, tetapi nomor invoice tidak dapat dimuat." };
+  }
+  const successDetails: SaleSuccessDetails = {
+    saleId,
+    invoiceNumber,
     total: result.total ?? total,
+    amountPaid: result.amountPaid ?? amountPaid,
     change: result.change ?? Math.max(0, amountPaid - total),
+    customerName: result.customerName ?? (field(formData, "customer_name") || null),
   };
 
-  revalidatePath("/pos");
   revalidatePath("/inventory");
   return {
     status: "success",
     message: "Transaksi berhasil disimpan.",
-    receipt,
+    saleId: successDetails.saleId,
+    invoiceNumber: successDetails.invoiceNumber,
+    total: successDetails.total,
+    amountPaid: successDetails.amountPaid,
+    change: successDetails.change,
+    customerName: successDetails.customerName,
   };
 }

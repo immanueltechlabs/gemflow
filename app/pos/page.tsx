@@ -5,6 +5,7 @@ import { PosTerminal } from "@/components/pos-terminal";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { getCurrentProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { signProductImages } from "@/lib/product-images";
 import type { PosProduct } from "@/lib/pos";
 
 export const metadata: Metadata = { title: "Kasir | GemFlow" };
@@ -15,7 +16,7 @@ export default async function PosPage() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, sku, barcode, name, category, selling_price")
+    .select("id, sku, barcode, name, category, selling_price, image_path")
     .eq("status", "available")
     .order("created_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: false })
@@ -27,13 +28,23 @@ export default async function PosPage() {
       message: error.message,
     });
   }
-  const defaultProducts: PosProduct[] = (data ?? []).map((product) => ({
+  const products = data ?? [];
+  const imageResult = await signProductImages(products);
+  if (imageResult.error && process.env.NODE_ENV === "development") {
+    console.error("[GemFlow POS] storage.default_product_images.sign_urls", {
+      code: imageResult.error.code ?? "unknown",
+      message: imageResult.error.message,
+    });
+  }
+  const defaultProducts: PosProduct[] = products.map((product) => ({
     id: product.id,
     sku: product.sku,
     barcode: product.barcode,
     name: product.name,
     category: product.category,
     selling_price: product.selling_price,
+    image_path: product.image_path,
+    image_url: product.image_path ? imageResult.urls.get(product.image_path) ?? null : null,
   }));
 
   return (
@@ -57,7 +68,11 @@ export default async function PosPage() {
 
       <PosTerminal
         defaultProducts={defaultProducts}
-        defaultProductsError={error ? "Produk tersedia belum dapat dimuat. Muat ulang halaman atau hubungi Admin." : ""}
+        defaultProductsError={error
+          ? "Produk tersedia belum dapat dimuat. Muat ulang halaman atau hubungi Admin."
+          : imageResult.error
+            ? "Foto produk belum dapat dimuat. Periksa bucket dan kebijakan Storage."
+            : ""}
       />
     </WorkspaceShell>
   );

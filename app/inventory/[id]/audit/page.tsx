@@ -24,6 +24,7 @@ const fieldLabels: Record<string, string> = {
   status: "Status",
   barcode: "Barcode",
   received_at: "Tanggal diterima",
+  image_path: "Foto produk",
 };
 
 type SearchParams = { page?: string | string[] };
